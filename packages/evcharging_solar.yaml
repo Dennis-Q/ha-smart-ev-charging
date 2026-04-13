@@ -1,0 +1,276 @@
+### Solar related EV stuff
+
+## Input helpers
+input_boolean:
+  ev_solar_charging:
+    name: "EV Solar Charging"
+    icon: mdi:sun-compass
+
+input_number:
+  ev_charging_limit_solar:
+    name: "EV Charging Limit Solar"
+    unit_of_measurement: "%"
+    min: 50
+    max: 100
+    step: 10
+    icon: mdi:sun-clock
+
+
+## Templates & sensors
+
+sensor:
+  - platform: statistics
+    name: "Grid Excess Power Last 2 Average"
+    unique_id: grid_excess_power_last_2_average
+    entity_id: sensor.grid_excess_power
+    state_characteristic: mean # This calculates the average
+    sampling_size: 2
+
+  - platform: statistics
+    name: "Grid Excess Power Last 3 Average"
+    unique_id: grid_excess_power_last_3_average
+    entity_id: sensor.grid_excess_power
+    state_characteristic: mean # This calculates the average
+    sampling_size: 3
+
+template:
+  - sensor:
+      # Calculate ACTUAL available solar power for EV charging
+      - name: "Grid Excess Power"
+        unique_id: grid_excess_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set solar_production_enphase = states('sensor.envoy_122109029426_current_power_production') | float(0) * 1000 %}
+          {% set solar_production_solaredge = states('sensor.solaredge_ac_power') | float(0) %}
+          {% set solar_production = solar_production_enphase + solar_production_solaredge %}
+          {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
+          {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
+          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(0) %}
+          {% set total_consumption = solar_production - grid_export + grid_import %}
+          {% set base_home_consumption = total_consumption - charger_power %}
+          {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
+          {% set excess = solar_production - base_home_consumption - buffer %}
+          {{ excess | round(0) }}
+
+      # Calculate ACTUAL available grid export power for EV charging (without solar production)
+      - name: "Grid Excess Power (Grid Only)"
+        unique_id: grid_excess_power_grid_only
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
+          {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
+          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(500) %}
+          {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
+          {% set current_power = grid_export - grid_import %}
+          {% set excess = current_power + charger_power - buffer %}
+          {{ excess | round(0) }}
+
+      # Calculate available charging amps for SINGLE PHASE
+      - name: "EV Available Charging Amps Single Phase"
+        unique_id: ev_available_charging_amps_single_phase
+        unit_of_measurement: "A"
+        state: >
+          {% set excess_power = states('sensor.grid_excess_power_last_3_average') | float(0) %}
+          {% set voltage = 230 %}
+          {% set min_amps = 6 %}
+          {% set max_amps = 16 %}
+          {% if excess_power > 0 %}
+            {% set calculated_amps = (excess_power / voltage) | round(0, 'floor') %}
+            {% if calculated_amps >= min_amps %}
+              {{ [calculated_amps, max_amps] | min }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+
+      # Calculate available charging amps for THREE PHASE
+      - name: "EV Available Charging Amps Three Phase"
+        unique_id: ev_available_charging_amps_three_phase
+        unit_of_measurement: "A"
+        state: >
+          {% set excess_power = states('sensor.grid_excess_power_last_3_average') | float(0) %}
+          {% set voltage_3phase = 690 %}
+          {% set min_amps = 6 %}
+          {% set max_amps = 16 %}
+          {% if excess_power > 0 %}
+            {% set calculated_amps = (excess_power / voltage_3phase) | round(0, 'floor') %}
+            {% if calculated_amps >= min_amps %}
+              {{ [calculated_amps, max_amps] | min }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+
+      # Determine optimal phase mode
+      - name: "EV Optimal Charging Phase Mode"
+        unique_id: ev_optimal_charging_phase_mode
+          #  {% set excess = states('sensor.grid_excess_power') | float(0) %}
+        state: >
+          {% set excess = states('sensor.grid_excess_power_last_3_average') | float(0) %}
+          {% set single_phase_amps = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
+          {% set three_phase_amps = states('sensor.ev_available_charging_amps_three_phase') | int(0) %}
+          {% set current_mode = states('switch.peblar_ev_charger_force_single_phase') %}
+          {% set switch_to_3phase_threshold = 4800 %}
+          {% set switch_to_1phase_threshold = 3500 %}
+          {% set min_charge_threshold = 1380 %}
+          {% if excess < min_charge_threshold %}
+            stop
+          {% elif excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
+            three_phase
+          {% elif excess <= switch_to_1phase_threshold %}
+            single_phase
+          {% else %}
+            {% if current_mode == 'on' %}
+              single_phase
+            {% else %}
+              three_phase
+            {% endif %}
+          {% endif %}
+
+## Automations
+
+automation:
+  - id: ev_solar_charge_mode_control
+    alias: "EV Solar Charge Mode Control"
+    description: "Stops charger or switches between 1 and 3-phase mode"
+    mode: restart # Reset timer when optimal phase mode is changed
+
+    # when does it stop if ev_charging is disabled? and should it stop?
+    # Create automation that stops charging unless manual override?
+    # add variables, including expected target limit - source attribute
+    # Add trigger when source limit is switched to solar ?
+    # add that from stop to single_phase goes quicker first time (e.g. if ev_charging is off for more than 3 minteutes) ?
+    triggers:
+      - trigger: state
+        entity_id: sensor.ev_optimal_charging_phase_mode
+        to: "stop"
+        for: "00:00:20" # for testing
+        # for: "00:02:00"
+        id: ev_stop
+      - trigger: state
+        entity_id: sensor.ev_optimal_charging_phase_mode
+        to: "single_phase"
+        for: "00:00:30" # for testing
+        # for: "00:02:00" # was 3 but feels slow?
+        id: ev_1p
+      - trigger: state
+        entity_id: sensor.ev_optimal_charging_phase_mode
+        to: "three_phase"
+        for: "00:00:50" # for testing
+        # for: "00:04:00"  # was 5 but feels slow?
+        id: ev_3p
+    conditions: # some disabled for testing?
+      - condition: state
+        entity_id: input_boolean.ev_manual_override
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.ev_solar_charging
+        state: "on"
+      ## Should probably be added?
+      - condition: state 
+        entity_id: sensor.ev_charging_mode
+        state: "solar"
+    actions:
+      - choose:
+          # Stop
+          - conditions:
+              - condition: trigger
+                id: ev_stop
+            sequence:
+              - action: switch.turn_off
+                target:
+                  entity_id: switch.peblar_ev_charger_charge
+          # 1-phase
+          - conditions:
+              - condition: trigger
+                id: ev_1p
+            sequence:
+              - action: number.set_value
+                target:
+                  entity_id: number.peblar_ev_charger_charge_limit
+                data:
+                  value: >
+                    {% set amps = states('sensor.ev_available_charging_amps_single_phase') | int(6) %}
+                    {{ amps if amps >= 6 else 6 }}
+              - action: switch.turn_on # force single phase charging
+                target:
+                  entity_id: switch.peblar_ev_charger_force_single_phase
+              - action: switch.turn_on # allow charging
+                target:
+                  entity_id: switch.peblar_ev_charger_charge
+          # 3-phase
+          - conditions:
+              - condition: trigger
+                id: ev_3p
+            sequence:
+              - action: number.set_value # start with a safe 6A when switching to 3P
+                target:
+                  entity_id: number.peblar_ev_charger_charge_limit
+                data:
+                  value: 6
+              - action: switch.turn_off # switch to 3-phase mode
+                target:
+                  entity_id: switch.peblar_ev_charger_force_single_phase
+              - action: switch.turn_on # allow charging
+                target:
+                  entity_id: switch.peblar_ev_charger_charge
+
+  - id: ev_solar_dynamic_power_control
+    alias: "EV Solar Dynamic Power Control"
+    description: "Adapt power control quickly"
+    # mode: silent
+
+    triggers:
+      - trigger: time_pattern
+        seconds: "/3"
+      # - trigger: state # is probably every second? too much ?
+      #   entity_id: sensor.grid_excess_power_last_3_average
+    conditions:
+      - condition: state
+        entity_id: input_boolean.ev_manual_override
+        state: "off"
+      - condition: state
+        entity_id: input_boolean.ev_solar_charging
+        state: "on"
+      - condition: state # Disable for testing
+        entity_id: switch.peblar_ev_charger_charge
+        state: "on"
+      - condition: state
+        entity_id: sensor.ev_charging_mode
+        state: "solar"
+      # - condition: state # Is this smart or impacting? if done doesn't work with manual turn-on.
+      #   entity_id: binary_sensor.ev_is_charging
+      #   state: "on"
+    actions:
+      - action: number.set_value
+        target:
+          entity_id: number.peblar_ev_charger_charge_limit
+        data:
+          value: >
+            {% set mode = states('sensor.ev_optimal_charging_phase_mode') %}
+            {% set amps_3f = states('sensor.ev_available_charging_amps_three_phase') | int(0) %}
+            {% set amps_1f = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
+            {% set single_phase_mode = is_state('switch.peblar_ev_charger_force_single_phase', 'on') %}
+            {% if mode == 'stop' %}
+              6
+            {% elif mode == 'three_phase' and single_phase_mode %}
+              {# Enough power for 3-phase but still in 1-phase-mode, so max power! #}
+              16
+            {% elif mode == 'three_phase' and not single_phase_mode %}
+              {# Three-phase mode and active #}
+              {{ amps_3f if amps_3f >= 6 else 6 }}
+            {% elif mode == 'single_phase' and not single_phase_mode %}
+              {# Single phase mode but not active yet #}
+              6
+            {% else %}
+              {# Single phase mode and also active #}
+              {{ amps_1f if amps_1f >= 6 else 6 }}
+            {% endif %}

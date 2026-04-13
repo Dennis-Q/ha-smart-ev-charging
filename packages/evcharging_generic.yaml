@@ -1,0 +1,556 @@
+### Generic EV stuff
+
+## Input helpers
+
+input_number:
+  ev_battery_capacity_kwh:
+    name: "EV Battery Capacity"
+    unit_of_measurement: "kWh"
+    min: 50
+    max: 100
+    step: 1
+    icon: mdi:battery-high
+
+  ev_charger_max_power_kw:
+    name: "EV Charger Maximum Power"
+    unit_of_measurement: "kW"
+    min: 6
+    max: 11
+    step: 1
+    icon: mdi:lightning-bolt-circle
+
+  ev_charging_efficiency_percent:
+    name: "EV Charging Efficiency"
+    unit_of_measurement: "%"
+    min: 80
+    max: 100
+    step: 1
+    icon: mdi:percent
+
+  ev_power_buffer_watts:
+    name: "EV Power Buffer"
+    unit_of_measurement: "W"
+    min: -7000 # was -2000 but changed for testing phases
+    max: 2000
+    step: 100
+    icon: mdi:shield-check
+
+  ev_charging_limit_force:
+    name: "EV Charging Limit Force"
+    unit_of_measurement: "%"
+    min: 50
+    max: 100
+    step: 10
+    icon: mdi:lightning-bolt-circle
+
+input_boolean:
+  ev_manual_override:
+    name: "EV Manual Override"
+    icon: mdi:hand-back-left
+
+  ev_force_charge_once:
+    name: "EV Force Charge (One-Time)"
+    icon: mdi:lightning-bolt
+
+  ev_force_charge_permanent:
+    name: "EV Force Charge Permanent"
+    icon: mdi:lightning-bolt-circle
+
+  ev_charge_prefer_tariff_over_solar:
+    name: "EV Charge prefer Tariff over Solar"
+    icon: mdi:sun-clock-outline
+
+input_datetime:
+  ev_force_charge_timeout:
+    name: "EV Force Charge Timeout"
+    has_date: true
+    has_time: true
+    icon: mdi:timer-sand
+
+## Templates & sensors
+
+template:
+  - binary_sensor:
+      - name: "EV is Charging"
+        unique_id: ev_is_charging
+        state: "{{ is_state('sensor.peblar_ev_charger_state', 'charging') }}"
+      - name: "EV is Connected"
+        unique_id: ev_is_connected
+        state: "{{ not is_state('sensor.peblar_ev_charger_state', 'no_ev_connected') and not is_state('sensor.peblar_ev_charger_state', 'unknown') and not is_state('sensor.peblar_ev_charger_state', 'unavailable') }}"
+        # state: "{{ is_state('sensor.peblar_ev_charger_state', 'evcharging') or is_state('sensor.peblar_ev_charger_state', 'suspended') }}"
+
+        # 
+  - sensor:
+      # Determine expected charging limit
+      # Ideas:
+      # - Maybe let Window win if battery percentage is not met?
+      # - Or let Window win when in cheapest hours (not just window)
+      # - Or let Window win when in cheapest hours (not just window) and less than 10% difference?
+      # - Maybe include 'expected solar left' as well
+      - name: "EV Expected Charging Limit"
+        unique_id: ev_expected_charging_limit
+        unit_of_measurement: "%"
+        state: >
+          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on')  %}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
+          {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
+          {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
+          {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
+          {% set sun_up = is_state('sun.sun', 'above_horizon') %}
+
+          {% if is_force_charging %}
+            {{ states('input_number.ev_charging_limit_force') | int }}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %} 
+            {{ states('input_number.ev_charging_limit_window') | int }}
+          {% elif solar_enabled and sun_up %}
+            {{ states('input_number.ev_charging_limit_solar') | int }}
+          {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
+            {{ states('input_number.ev_charging_limit_window') | int }}
+          {% elif is_window_active and not tarif_optimization  %}
+            {{ states('input_number.ev_charging_limit_window') | int }}
+          {% endif %}
+
+
+      - name: "EV Charging Mode"
+        unique_id: ev_charging_mode
+        state: >
+          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on')  %}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
+          {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
+          {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
+          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
+          {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
+          {% set sun_up = is_state('sun.sun', 'above_horizon') %}
+
+          {% if is_force_charging %}
+            force
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %} 
+            cheapest
+          {% elif solar_enabled and sun_up %}
+            solar
+          {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
+            cheapest
+          {% elif is_window_active and not tarif_optimization  %}
+            window
+          {% else %}
+            none
+          {% endif %}
+
+      # Debug sensor - to be decided if this is really required.
+      - name: "EV Debug Solar Values"
+        unique_id: ev_debug_solar_values
+        state: "OK"
+        attributes:
+          solar: "{{ (states('sensor.envoy_122109029426_current_power_production') | float(0) * 1000) + states('sensor.solaredge_ac_power') | float(0) }} W"
+          excess: "{{ states('sensor.grid_excess_power') }} W"
+
+## Automations
+
+automation:
+  # # Stop immediate charging when cable is connected
+  # # Is this really required?
+  # # If so; we could also check state of the evcharger?
+
+  # - id: "ev_cable_connected_stop_immediate"
+  #   alias: "EV Cable Connected - Stop Immediate Charging"
+  #   description: "Prevent immediate charging when cable is plugged in"
+  #   mode: single
+  #   max_exceeded: silent
+  #   triggers:
+  #     - trigger: state
+  #       entity_id: binary_sensor.skoda_elroq_charger_connected
+  #       from: "off"
+  #       to: "on"
+  #   conditions:
+  #     - condition: state
+  #       entity_id: input_boolean.ev_manual_override
+  #       state: "off"
+  #     - condition: state
+  #       entity_id: device_tracker.skoda_elroq_position
+  #       state: "home"
+  #     - condition: template
+  #       value_template: "{{ states('sensor.peblar_ev_charger_state') not in ['unavailable', 'unknown', 'no_ev_connected'] }}"
+  #     - condition: state
+  #       entity_id: input_boolean.ev_force_charge_once
+  #       state: "off"
+  #     - condition: state
+  #       entity_id: input_boolean.ev_force_charge_permanent
+  #       state: "off"
+  #   actions:
+  #     - delay:
+  #         seconds: 15
+  #     - action: switch.turn_off
+  #       target:
+  #         entity_id: switch.skoda_elroq_charging
+  #     - action: notify.mobile_app_dennis_mobile
+  #       data:
+  #         title: "EV Cable Connected"
+  #         message: "Charging stopped - automation will control charging"
+  #         data:
+  #           priority: high
+  #           tag: ev_cable_connected
+  #           color: blue
+
+  # Set force charge timeout (one-time)
+  - id: "ev_force_charge_set_timeout"
+    alias: "EV Force Charge - Set 8 Hour Timeout"
+    description: "Set timeout when force charge activated"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.ev_force_charge_once
+        to: "on"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ev_force_charge_timeout
+        data:
+          datetime: "{{ (now() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # Auto-disable force charge on timeout
+  - id: "ev_force_charge_auto_disable_timeout"
+    alias: "EV Force Charge Auto Disable on 8 Hour Timeout"
+    description: "Automatically disable after 8 hours"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.ev_force_charge_once
+        state: "on"
+      - condition: template
+        value_template: "{{ states('input_datetime.ev_force_charge_timeout') not in ['unknown', 'unavailable', 'none'] }}"
+      - condition: template
+        value_template: "{{ now() | as_timestamp >= (states('input_datetime.ev_force_charge_timeout') | as_timestamp) }}"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_force_charge_once
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Force Charge Timeout"
+          message: "Force charge once disabled after 8 hours"
+          data:
+            priority: high
+            tag: ev_force_timeout
+            color: orange
+
+  # Auto-disable force charge (once) when full
+  - id: "ev_force_charge_auto_disable_full"
+    alias: "EV Force Charge (Once) Auto Disable on Full"
+    description: "Disable when battery reaches force charge limit"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set limit = states('input_number.ev_charging_limit_force') | int(1) %}
+          {{ (states('sensor.skoda_elroq_battery_percentage') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_force_charge_once
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Force Charge Complete (one-time)"
+          message: "Car fully charged"
+          data:
+            priority: high
+            tag: ev_force_complete
+            color: green
+
+  # Activate permanent force charging
+  - id: "ev_force_charge_permanent_activate"
+    alias: "EV Force Charge Permanent - Activate"
+    description: "Activate permanent force charging mode"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.ev_force_charge_permanent
+        to: "on"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_force_charge_once
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Permanent Force Charge Activated"
+          message: "Permanent force charging enabled - One-time force charging disabled"
+          data:
+            priority: high
+            tag: ev_permanent_force_active
+            color: red
+
+  # Deactivate permanent force charging
+  # Idea: also create one for manual override (with additional daily check?)
+  - id: "ev_force_charge_permanent_deactivate"
+    alias: "EV Force Charge Permanent - Deactivate"
+    description: "Deactivate permanent force charging mode"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.ev_force_charge_permanent
+        to: "off"
+    actions:
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Permanent Force Charge Deactivated"
+          message: "Permanent force charging disabled - automations resumed but might not be enabled"
+          data:
+            priority: high
+            tag: ev_permanent_force_inactive
+            color: green
+
+  # Force charge activation - configure charger and optionally start charging
+  - id: "ev_force_charge_override_enabled"
+    alias: "EV Force Charge Override Enabled"
+    description: "Handle force charge activation - always configure charger, start charging only if cable connected"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.ev_force_charge_once
+        to: "on"
+      - trigger: state
+        entity_id: input_boolean.ev_force_charge_permanent
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.ev_manual_override
+        state: "off"
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.peblar_ev_charger_force_single_phase
+      - action: number.set_value
+        target:
+          entity_id: number.peblar_ev_charger_charge_limit
+        data:
+          value: 16
+      - action: switch.turn_on
+        target:
+          entity_id: switch.peblar_ev_charger_charge
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.ev_is_connected
+                state: "on"
+              # - condition: template
+              #   value_template: "{{ states('sensor.peblar_ev_charger_state') not in ['unavailable', 'unknown', 'no_ev_connected'] }}"
+            sequence:
+              - action: number.set_value
+                target:
+                  entity_id: number.skoda_elroq_charge_limit # probably also handled by ev charge validation automation
+                data:
+                  value: "{{ states('input_number.force_charging_limit_percent') | int(100) }}"
+              ## Not needed? Automation might get stuck when Car API is non-responsive
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.skoda_elroq_charging
+              - action: notify.mobile_app_dennis_mobile
+                data:
+                  title: "EV Force Charge Activated"
+                  message: "Maximum charging at 3-phase 16A"
+                  data:
+                    priority: high
+                    tag: ev_force_active
+                    color: red
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.ev_is_connected
+                state: "off"
+            sequence:
+              - action: notify.mobile_app_dennis_mobile
+                data:
+                  title: "EV Force Charge - Cable Not Connected"
+                  message: "Charger configured to 3-phase 16A. Please connect cable to start charging."
+                  data:
+                    priority: high
+                    tag: ev_force_cable_missing
+                    color: orange
+
+  # Validate charging limit
+  # reduce triggers / API calls further
+  - id: "ev_validate_charging_limit"
+    alias: "EV Validate Charging Limit"
+    description: "Validate and reset charging limit"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      # - trigger: time_pattern
+      #   minutes: "/10" # was /2
+      - trigger: state # trigger on any state change
+        entity_id: 
+          - sensor.skoda_elroq_target_battery_percentage
+      - trigger: state # trigger any state not not to unknown
+        entity_id: sensor.ev_expected_charging_limit
+        not_to: "unknown"
+      - trigger: state # trigger on 'on' state
+        entity_id:
+          - binary_sensor.skoda_elroq_charger_connected
+          - input_boolean.ev_force_charge_permanent
+          - input_boolean.ev_force_charge_once
+          - input_boolean.ev_solar_charging
+          - input_boolean.ev_window_charging
+          - binary_sensor.ev_is_charging
+          - binary_sensor.ev_is_connected
+        to: "on"
+      - trigger: state # trigger on 'off' state
+        entity_id: input_boolean.ev_manual_override
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_boolean.ev_manual_override
+        state: "off"
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
+      - condition: template
+        value_template: >
+          {% set current_limit = states('sensor.skoda_elroq_target_battery_percentage') | int %}
+          {% set expected_limit = states('sensor.ev_expected_charging_limit') | int %}
+          {{ current_limit != expected_limit }}
+    actions:
+      - variables:
+          expected_limit: "{{ states('sensor.ev_expected_charging_limit') | int }}"
+          current_limit: "{{ states('sensor.skoda_elroq_target_battery_percentage') | int }}"
+      - action: number.set_value
+        target:
+          entity_id: number.skoda_elroq_charge_limit
+        data:
+          value: "{{ expected_limit }}"
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Charging Limit Corrected"
+          message: "Corrected from {{ current_limit }}% to {{ expected_limit }}%"
+          data:
+            priority: high
+            tag: ev_limit_corrected
+            color: yellow
+
+  # Charging complete notification
+  # Not much testing so far!
+  - id: "ev_charging_complete_notification"
+    alias: "EV Charging Complete Notification"
+    description: "Notify when EV reaches configured charge limit"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.skoda_elroq_battery_percentage
+        above: 99
+      - trigger: template
+        value_template: >-
+          {{
+            states('sensor.skoda_elroq_battery_percentage') | int(0)
+            >=
+            states('sensor.ev_expected_charging_limit') | int(101)
+          }}
+    condition:
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_force_charge_permanent
+        state: "off"
+    actions:
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Charging Complete"
+          message: >-
+            Your Elroq has reached the set charging limit of
+            {{ states('sensor.ev_expected_charging_limit') }}%
+            (current: {{ states('sensor.skoda_elroq_battery_percentage') }}%).
+          data:
+            priority: high
+            tag: ev_complete
+            color: green
+
+  - id: ev_charger_error_notification
+    alias: "EV Charger Error Notification"
+    description: "Send notification when Peblar charger is in unfeasible state."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.peblar_ev_charger_state
+        to:
+          - "error"
+          - "fault"
+          - "invalid"
+    actions:
+      - action: notify.mobile_app_dennis_mobile
+        data:
+          title: "EV Charger in unexpected state"
+          message: "Peblar in state '{{ trigger.to_state.state }}'. Please check ASAP!"
+          data:
+            priority: high
+            tag: ev_charger_in_error
+            color: red
+
+  - id: ev_generic_charging_mode_control
+    alias: "EV Generic Charge Mode Control"
+    description: "Controls charger based on charging mode (except Solar)"
+    mode: restart # Reset timer when optimal phase mode is changed
+
+    # when does it stop if ev_charging is disabled?
+    # if mode changes from something else then none, when will it stop?
+    # add variables? including expected target limit source
+    # Add trigger when source limit is switched to solar ?
+
+    triggers:
+      - trigger: state
+        entity_id: sensor.ev_charging_mode
+        to:
+          - "force"
+          - "cheapest"
+          - "window"
+        id: mode_full_power
+        for: "00:00:30"
+        # not_from:
+        #   - "unknown"
+        #   - "unavailable"
+      - trigger: state
+        entity_id: sensor.ev_charging_mode
+        to:
+          - "none"
+        id: mode_none
+        for: "00:00:30"
+        # not_from:
+        #   - "unknown"
+        #   - "unavailable"
+    conditions: # some disabled for testing?
+      - condition: state
+        entity_id: input_boolean.ev_manual_override
+        state: "off"
+      - condition: state # do not use as this causes things not to work!
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: mode_full_power
+            sequence:
+              - action: number.set_value # maximize power
+                target:
+                  entity_id: number.peblar_ev_charger_charge_limit
+                data:
+                  value: 16
+              - action: switch.turn_off # switch to 3-phase mode
+                target:
+                  entity_id: switch.peblar_ev_charger_force_single_phase
+              - action: switch.turn_on # allow charging
+                target:
+                  entity_id: switch.peblar_ev_charger_charge
+          - conditions:
+              - condition: trigger
+                id: mode_none
+            sequence:
+              - action: switch.turn_off # Stop charging if no mode is selected
+                target:
+                  entity_id: switch.peblar_ev_charger_charge

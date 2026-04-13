@@ -1,0 +1,291 @@
+### EV stuff related to hours / window / cheapest window
+
+## Input helpers
+
+input_number:
+  ev_window_charging_start_hour:
+    name: "EV Window Charging Start Hour"
+    unit_of_measurement: "h"
+    min: 0
+    max: 23
+    step: 1
+    icon: mdi:clock-start
+
+  ev_window_charging_end_hour:
+    name: "EV Window Charging End Hour"
+    unit_of_measurement: "h"
+    min: 0
+    max: 23
+    step: 1
+    icon: mdi:clock-end
+
+  ev_charging_limit_window:
+    name: "EV Charging Limit Window"
+    unit_of_measurement: "%"
+    min: 50
+    max: 100
+    step: 10
+    icon: mdi:clock-star-four-points
+
+input_boolean:
+  ev_window_charging:
+    name: "EV Window Charging"
+    icon: mdi:clock
+
+  ev_dynamic_tariff_optimization:
+    name: "EV Dynamic Tariff Optimization (in window)"
+    icon: mdi:chart-line
+
+## Templates & sensors
+
+template:
+  - sensor:
+      # 1) Base window start/end (purely from input_numbers + time)
+      - name: EV Charging Window Start Time
+        unique_id: ev_charging_window_start_time
+        state: >
+          {# Start time of the charging window in format YYYY-MM-DD HH:MM:SS #}
+          {% set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) %}
+          {% set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) %}
+          {% set now_dt = now() %}
+          {% set now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
+
+          {% set today = now_dt.strftime('%Y-%m-%d') %}
+          {% set yesterday = (now_dt - timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set tomorrow = (now_dt + timedelta(days=1)).strftime('%Y-%m-%d') %}
+
+          {% if end_hour <= start_hour %}
+            {# Window crosses midnight #}
+            {% set current_start = yesterday + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+            {% set current_end   = today     + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+            {% set next_start    = today     + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+          {% else %}
+            {# Window same day #}
+            {% set current_start = today + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+            {% set current_end   = today + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+            {% set next_start    = tomorrow + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+          {% endif %}
+
+          {% if now_str < current_end %}
+            {{ current_start }}
+          {% else %}
+            {{ next_start }}
+          {% endif %}
+
+      - name: EV Charging Window End Time
+        unique_id: ev_charging_window_end_time
+        state: >
+          {# End time of the charging window in format YYYY-MM-DD HH:MM:SS #}
+          {% set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) %}
+          {% set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) %}
+          {% set now_dt = now() %}
+          {% set now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S') %}
+
+          {% set today = now_dt.strftime('%Y-%m-%d') %}
+          {% set yesterday = (now_dt - timedelta(days=1)).strftime('%Y-%m-%d') %}
+          {% set tomorrow = (now_dt + timedelta(days=1)).strftime('%Y-%m-%d') %}
+
+          {% if end_hour <= start_hour %}
+            {# Window crosses midnight #}
+            {% set current_start = yesterday + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+            {% set current_end   = today     + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+            {% set next_end      = tomorrow  + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+          {% else %}
+            {# Window same day #}
+            {% set current_start = today + ' ' + '%02d' | format(start_hour) + ':00:00' %}
+            {% set current_end   = today + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+            {% set next_end      = tomorrow + ' ' + '%02d' | format(end_hour)   + ':00:00' %}
+          {% endif %}
+
+          {% if now_str < current_end %}
+            {{ current_end }}
+          {% else %}
+            {{ next_end }}
+          {% endif %}
+
+      # 2) Is current time in active window?
+      - name: EV Charging Window Active
+        unique_id: ev_charging_window_active
+        # device_class: problem
+        state: >
+          {% set window_start = states('sensor.ev_charging_window_start_time') %}
+          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+          {% set now_str = now().strftime('%Y-%m-%d %H:%M:%S') %}
+
+          {% if window_start in ['unknown','unavailable','None'] or
+                window_end in ['unknown','unavailable','None'] %}
+            false
+          {% else %}
+            {{ (now_str >= window_start and now_str < window_end) | lower }}
+          {% endif %}
+
+      # Calculate hours needed to EV charge (window)
+      # Requires:
+      # - Skoda integration & Elroq car (skoda_elroq_battery_percentage)
+      # -
+
+      - name: "EV Hours Needed For Charging"
+        unique_id: ev_hours_needed_for_charging
+        unit_of_measurement: "h"
+        icon: mdi:clock-fast
+        state: >
+          {% set current_battery = states('sensor.skoda_elroq_battery_percentage') | float(0) %}
+          {% set target_battery = states('input_number.ev_charging_limit_window') | float(0) %}
+          {% set battery_capacity = states('input_number.ev_battery_capacity_kwh') | float(82) %}
+          {% set charger_power = states('input_number.ev_charger_max_power_kw') | float(11) %}
+          {% set efficiency = states('input_number.ev_charging_efficiency_percent') | float(90) / 100 %}
+          {% set battery_percentage_needed = target_battery - current_battery %}
+          {% set kwh_needed = (battery_capacity * battery_percentage_needed / 100) %}
+          {% set kwh_needed_with_losses = kwh_needed / efficiency %}
+          {% set hours_needed = (kwh_needed_with_losses / charger_power) | round(1) %}
+          {% if hours_needed > 0 %}
+            {{ hours_needed }}
+          {% else %}
+            0.0
+          {% endif %}
+        attributes:
+          current_battery_percent: "{{ states('sensor.skoda_elroq_battery_percentage') | float(0) | round(1) }}"
+          target_battery_percent: "{{ states('input_number.ev_charging_limit_window') | float(0) | round(1) }}"
+          battery_capacity_kwh: "{{ states('input_number.ev_battery_capacity_kwh') | float(0) | round(1) }}"
+          
+      # 3) Cheapest hours within window (JSON list)
+      - name: EV Cheapest Hours In Window
+        unique_id: ev_cheapest_hours_in_window
+        state: >
+          {# State is JSON string of selected hours #}
+          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
+          {% set window_start = states('sensor.ev_charging_window_start_time') %}
+          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+          {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
+
+          {% if prices_raw is none or hours_needed == 0 or
+                window_start in ['unknown','unavailable','None'] or
+                window_end in ['unknown','unavailable','None'] %}
+            []
+          {% else %}
+            {% set window_prices = prices_raw
+                 | selectattr('time', '>=', window_start)
+                 | selectattr('time', '<', window_end)
+                 | list %}
+            {% set future_prices = window_prices
+                 | selectattr('time', '>=', cutoff)
+                 | list %}
+
+            {% if future_prices | length == 0 %}
+              []
+            {% else %}
+              {% set sorted_prices = future_prices | sort(attribute='price') %}
+              {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
+              {% set selected = sorted_prices[:hours_int] | sort(attribute='time') %}
+              [{% for item in selected -%}
+                {"time": "{{ item.time }}", "price": {{ item.price | round(4) }}}
+                {%- if not loop.last %},{% endif -%}
+              {%- endfor %}]
+            {% endif %}
+          {% endif %}
+        attributes:
+          count: >
+            {% set s = states('sensor.ev_cheapest_hours_in_window') %}
+            {% if s in ['unknown','unavailable','None',''] %}
+              0
+            {% else %}
+              {% set list = s | from_json %}
+              {{ list | length }}
+            {% endif %}
+
+      # 4) Latest start time (window_end - hours_needed)
+      - name: EV Window Latest Start Time
+        unique_id: ev_window_latest_start_time
+        state: >
+          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
+          {% if window_end in ['unknown','unavailable','None'] or hours_needed == 0 %}
+            unknown
+          {% else %}
+            {% set window_end_dt = strptime(window_end, '%Y-%m-%d %H:%M:%S') %}
+            {% set latest_start_dt = window_end_dt - timedelta(hours=hours_needed) %}
+            {{ latest_start_dt.strftime('%Y-%m-%d %H:%M:%S') }}
+          {% endif %}
+
+      # 5) Is current time in *any* of the cheapest hours?
+      - name: EV Is In Cheapest Window
+        unique_id: ev_is_in_cheapest_window
+        state: >
+          {% set s = states('sensor.ev_cheapest_hours_in_window') %}
+          {% if s in ['unknown','unavailable','None',''] %}
+            false
+          {% else %}
+            {% set cheapest = s | from_json %}
+            {% set now_dt = now() %}
+            {% set current_hour_prefix = now_dt.strftime('%Y-%m-%d %H') %}
+            {% set match = cheapest | selectattr('time', 'match', '^' + current_hour_prefix) | list %}
+            {{ (match | length > 0) | lower }}
+          {% endif %}
+
+      # 6) Sufficient time left in window (based on latest_start)
+      - name: EV Sufficient Hours To Charge In Window
+        unique_id: ev_sufficient_hours_to_charge_in_window
+        state: >
+          {% set latest_start = states('sensor.ev_window_latest_start_time') %}
+          {% set now_str = now().strftime('%Y-%m-%d %H:%M:%S') %}
+          {% if latest_start in ['unknown','unavailable','None'] %}
+            false
+          {% else %}
+            {{ (now_str <= latest_start) | lower }}
+          {% endif %}
+
+      # 7) Sufficient known hours in window (based purely on available price slots)
+      # average_electricity_price sensor is of the entso-e platform (default names)
+      # not sure how useful this currently is, does not take into account hours that already passed.
+      - name: EV Sufficient Known Hours In Window
+        unique_id: ev_sufficient_known_hours_in_window
+        state: >
+          {% set window_start = states('sensor.ev_charging_window_start_time') %}
+          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
+          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% if prices_raw is none or hours_needed == 0 or
+                window_start in ['unknown','unavailable','None'] or
+                window_end in ['unknown','unavailable','None'] %}
+            false
+          {% else %}
+            {% set window_prices = prices_raw
+                 | selectattr('time', '>=', window_start)
+                 | selectattr('time', '<', window_end)
+                 | list %}
+            {% set hours_available = window_prices | length %}
+            {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
+            {{ (hours_available >= hours_int) | lower }}
+          {% endif %}
+
+      # Might be useful for debugging. Disable when all works fine.
+      - name: EV Charging Debug Info
+        unique_id: ev_charging_debug_info
+        state: >
+          {# Debug information: future hours available, hours needed, and current timestamp #}
+          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) %}
+          {% set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) %}
+          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
+          {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
+          {% set window_start = states('sensor.ev_charging_window_start_time') %}
+          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+
+          {% if prices_raw is none %}
+            {% set future_count = 0 %}
+            {% set total_count = 0 %}
+          {% else %}
+            {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
+            {% set future_prices = prices_raw | rejectattr('time', '<', cutoff) | list %}
+            {% set future_count = future_prices | length %}
+            {% set total_count = prices_raw | length %}
+          {% endif %}
+
+          Future hours available: {{ future_count }}/{{ total_count }}
+          Hours needed: {{ hours_needed }} (selecting {{ hours_int }} hours)
+          Now: {{ now().isoformat() }}
+          Cutoff: {{ now().strftime('%Y-%m-%d %H:00:00') }}
+          Night window: {{ start_hour }}:00 - {{ end_hour }}:00 {% if end_hour <= start_hour %}(crosses midnight){% endif %}
+          Window start: {{ window_start }}
+          Window end: {{ window_end }}

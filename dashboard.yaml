@@ -1,0 +1,293 @@
+views:
+  - title: EV Solar Charging
+    cards:
+      - type: entities
+        title: EV Charging Settings
+        entities:
+          - entity: input_boolean.ev_manual_override
+            name: Manual Override (stop HA)
+          - type: divider
+          - entity: input_boolean.ev_solar_charging
+          - entity: input_boolean.ev_window_charging
+          - entity: input_number.ev_window_charging_start_hour
+            name: Window Start (Hour)
+          - entity: input_number.ev_window_charging_end_hour
+            name: Window End (Hour)
+          - entity: input_boolean.ev_dynamic_tariff_optimization
+          - entity: input_boolean.ev_charge_prefer_tariff_over_solar
+          - type: divider
+          - entity: input_boolean.ev_force_charge_permanent
+            name: Force Max Charge (permanent)
+          - entity: input_boolean.ev_force_charge_once
+            name: Force Max Charge (8-hour limit)
+          - entity: input_datetime.ev_force_charge_timeout
+            name: Force Charge Timeout At
+          - type: divider
+          - entity: input_number.ev_battery_capacity_kwh
+            name: Battery Capacity (kWh)
+          - entity: input_number.ev_charger_max_power_kw
+            name: Charger Maximum Power (kW)
+          - entity: input_number.ev_charging_efficiency_percent
+            name: Charging Efficiency (%)
+          - entity: input_number.ev_power_buffer_watts
+            name: Power Buffer (W)
+      - type: entities
+        title: Charging Limits
+        entities:
+          - entity: input_number.ev_charging_limit_solar
+            name: Solar Charging Limit (%)
+          - entity: input_number.ev_charging_limit_window
+            name: Window Charging Limit (%)
+          - entity: input_number.ev_charging_limit_force
+            name: Force Charging Limit (%)
+          - type: divider
+          - entity: number.skoda_elroq_charge_limit
+            name: Current Car Limit
+      - type: entities
+        title: EV Charging Status
+        entities:
+          - entity: binary_sensor.skoda_elroq_charger_connected
+            name: Cable Connected
+          - entity: sensor.skoda_elroq_battery_percentage
+            name: Battery Level
+          - entity: sensor.skoda_elroq_range
+            name: Range (left)
+          - entity: sensor.skoda_elroq_target_battery_percentage
+            name: Car Charging Limit
+          - entity: sensor.ev_expected_charging_limit
+            name: Expected Charging Limit
+          - entity: sensor.ev_charging_mode
+            name: Charging Mode
+          - entity: sensor.peblar_ev_charger_power
+            name: Charger Current Power
+          - entity: sensor.peblar_ev_charger_state
+            name: Peblar Charger State
+          - entity: binary_sensor.ev_is_charging
+          - entity: binary_sensor.ev_is_connected
+      - type: entities
+        title: Dynamic Tariff Information
+        entities:
+          - entity: sensor.frank_energie_prices_current_electricity_price_all_in
+            name: Current Price (Frank)
+          - entity: sensor.frank_energie_prices_current_electricity_market_price
+          - entity: sensor.current_electricity_market_price
+            name: Current Price (Entso-e)
+          - entity: sensor.average_electricity_price
+            name: Average Price (Entso-e)
+      - type: entities
+        title: Power Management
+        entities:
+          - entity: sensor.grid_excess_power
+            name: Excess Solar Power (Raw)
+          - entity: sensor.grid_excess_power_grid_only
+          - entity: sensor.grid_excess_power_last_2_average
+          - entity: sensor.grid_excess_power_last_3_average
+          - entity: sensor.ev_available_charging_amps_single_phase
+            name: Available Amps (1-Phase)
+          - entity: sensor.ev_available_charging_amps_three_phase
+            name: Available Amps (3-Phase)
+          - entity: sensor.ev_optimal_charging_phase_mode
+            name: Optimal Phase Mode
+      - type: entities
+        title: Charge Control
+        entities:
+          - entity: switch.peblar_ev_charger_force_single_phase
+            name: Single Phase Mode
+          - entity: number.peblar_ev_charger_charge_limit
+            name: Charger Current Limit (A)
+          - entity: switch.peblar_ev_charger_charge
+            name: Peblar Charger On/Off
+          - type: divider
+          - entity: switch.skoda_elroq_charging
+            name: Car Charging On/Off
+      - type: entities
+        title: Window Charging
+        entities:
+          - entity: sensor.ev_charging_window_start_time
+            name: EV Charging Start Time
+          - entity: sensor.ev_charging_window_end_time
+            name: EV Charging End Time
+          - entity: sensor.ev_charging_window_active
+          - entity: sensor.ev_hours_needed_for_charging
+          - entity: sensor.ev_cheapest_hours_in_window
+          - entity: sensor.ev_window_latest_start_time
+          - entity: sensor.ev_is_in_cheapest_window
+          - entity: sensor.ev_sufficient_hours_to_charge_in_window
+          - entity: sensor.ev_sufficient_known_hours_in_window
+      - type: entities
+        title: Debug Information
+        entities:
+          - entity: sensor.ev_debug_solar_values
+            name: Solar debug info
+          - type: attribute
+            name: Solar
+            entity: sensor.ev_debug_solar_values
+            attribute: solar
+          - type: attribute
+            name: Excess
+            entity: sensor.ev_debug_solar_values
+            attribute: excess
+          - entity: sensor.ev_charging_debug_info
+            name: EV charging debug info
+  - title: Elroq
+    sections:
+      - type: grid
+        cards:
+          - type: gauge
+            entity: sensor.skoda_elroq_battery_percentage
+            needle: false
+          - graph: none
+            type: sensor
+            entity: sensor.skoda_elroq_range
+            detail: 1
+            grid_options:
+              columns: full
+              rows: 2
+          - graph: line
+            type: sensor
+            detail: 1
+            entity: sensor.skoda_elroq_mileage
+            grid_options:
+              columns: full
+              rows: 2
+            hours_to_show: 168
+          - graph: none
+            type: sensor
+            entity: sensor.skoda_elroq_next_inspection
+            detail: 1
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: switch.skoda_elroq_charging
+            vertical: false
+            features_position: bottom
+            grid_options:
+              columns: full
+          - type: tile
+            entity: binary_sensor.skoda_elroq_doors_open
+          - type: tile
+            entity: binary_sensor.skoda_elroq_doors_locked
+          - type: tile
+            entity: binary_sensor.skoda_elroq_windows
+          - type: tile
+            entity: binary_sensor.skoda_elroq_trunk
+          - type: tile
+            entity: switch.peblar_ev_charger_force_single_phase
+          - type: tile
+            entity: number.peblar_ev_charger_charge_limit
+          - type: tile
+            entity: switch.peblar_ev_charger_charge
+          - type: tile
+            entity: sensor.peblar_ev_charger_state
+          - type: tile
+            entity: climate.skoda_elroq_air_conditioning
+      - type: grid
+        cards:
+          - type: history-graph
+            entities:
+              - entity: binary_sensor.skoda_elroq_charger_connected
+              - entity: binary_sensor.skoda_elroq_charge_lock
+              - entity: number.skoda_elroq_charge_limit
+              - entity: sensor.skoda_elroq_charge_type
+              - entity: sensor.skoda_elroq_charging_power
+              - entity: sensor.skoda_elroq_battery_percentage
+            logarithmic_scale: false
+            hours_to_show: 48
+            grid_options:
+              columns: full
+        column_span: 3
+    badges:
+      - type: entity
+        show_name: true
+        show_state: false
+        show_icon: true
+        entity: image.skoda_elroq_main_render_of_vehicle
+        show_entity_picture: true
+        tap_action:
+          action: none
+    type: sections
+    max_columns: 4
+    cards: []
+  - type: sections
+    max_columns: 4
+    title: Automations
+    path: automations
+    sections:
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              type: entities
+              title: EV Automations
+              show_header_toggle: false
+              state_color: true
+            filter:
+              include:
+                - domain: automation
+                  entity_id: automation.ev_*
+                  options:
+                    secondary_info: last-triggered
+            sort:
+              method: entity_id
+  - title: Frank
+    cards:
+      - type: custom:apexcharts-card
+        graph_span: 48h
+        span:
+          start: day
+        now:
+          show: true
+          label: Nu
+        header:
+          show: true
+          title: Energieprijs per uur (€/kwh)
+        series:
+          - entity: sensor.frank_energie_prices_current_electricity_price_all_in
+            show:
+              legend_value: false
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 0.3
+            color: "#03b2cb"
+            data_generator: |
+              return entity.attributes.prices.map((record, index) => {
+                return [record.from, record.price];
+              });
+          - entity: sensor.average_electricity_price
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 1
+            color: "#FF9800"
+            data_generator: |
+              return entity.attributes.prices.map((entry) => { 
+              return [new Date(entry.time), entry.price];
+              });
+      - type: custom:apexcharts-card
+        graph_span: 48h
+        span:
+          start: day
+        now:
+          show: true
+          label: Now
+        header:
+          show: true
+          title: Electriciteitsprijzen Vandaag (€/kwh)
+        yaxis:
+          - decimals: 2
+        series:
+          - entity: sensor.average_electricity_price
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 1
+            color: ""
+            data_generator: |
+              return entity.attributes.prices.map((entry) => { 
+              return [new Date(entry.time), entry.price];
+              });
+      - type: entities
+        entities:
+          - sensor.frank_energie_gasprices_current_gas_price_all_in
