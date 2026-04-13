@@ -347,7 +347,7 @@ automation:
                 target:
                   entity_id: number.skoda_elroq_charge_limit # probably also handled by ev charge validation automation
                 data:
-                  value: "{{ states('input_number.force_charging_limit_percent') | int(100) }}"
+                  value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
               ## Not needed? Automation might get stuck when Car API is non-responsive
               - action: switch.turn_on
                 target:
