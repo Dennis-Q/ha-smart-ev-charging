@@ -69,12 +69,16 @@ download() {
     curl -fsSL "${BASE_URL}/${src}" -o "${dst}"
 }
 
+# ── Fetch project version ─────────────────────────────────────────────────────
+
+RELEASE_VERSION=$(curl -fsSL "${BASE_URL}/VERSION" 2>/dev/null | tr -d '[:space:]' || echo "unknown")
+
 # ── Header ────────────────────────────────────────────────────────────────────
 
 echo ""
 hr
 echo "  ha-smart-ev-charging — installer"
-echo "  Version : ${VERSION}"
+echo "  Release : ${RELEASE_VERSION}  (git ref: ${VERSION})"
 echo "  Target  : ${CONFIG_DIR}"
 hr
 echo ""
@@ -159,6 +163,10 @@ done
 download "dashboard.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard.yaml"
 ok "lovelace/ev_dashboard.yaml"
 
+# Record installed version (hidden file — not loaded by HA)
+echo "$RELEASE_VERSION" > "${CONFIG_DIR}/packages/.ev_charging_version"
+ok "packages/.ev_charging_version  (${RELEASE_VERSION})"
+
 echo ""
 
 # ── Peblar Modbus integration (optional) ──────────────────────────────────────
@@ -170,7 +178,7 @@ echo ""
 MODBUS_TEMPLATE="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml.template"
 MODBUS_TARGET="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"
 MODBUS_PLACEHOLDER="192.168.1.xxx"
-MODBUS_NEEDS_HOST=false
+MODBUS_ACTION_NEEDED=false
 
 echo "Peblar Modbus integration:"
 
@@ -178,20 +186,21 @@ download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TEMPLATE"
 ok "packages/ev_peblar_modbus.yaml.template  (reference template — updated)"
 
 if [ ! -f "$MODBUS_TARGET" ]; then
+    MODBUS_ACTION_NEEDED=true
     echo ""
     info "packages/ev_peblar_modbus.yaml not found — Modbus integration not active."
     info "To enable milliamp-precision Modbus control, follow these steps in order:"
     say "1. Remove the official Peblar REST integration from"
-    say "   Settings → Devices & Services, then restart Home Assistant."
+    say "   Settings → Devices & Services, then do a full HA restart."
     say "2. Delete any leftover unavailable peblar_ev_charger_* entities."
     say "3. Copy the template and set your charger's IP address or hostname:"
     say "     cp ${MODBUS_TEMPLATE} ${MODBUS_TARGET}"
     say "     # then edit ${MODBUS_TARGET} and set host:"
-    say "4. Restart Home Assistant again."
+    say "4. Do another full HA restart."
 else
     ok "packages/ev_peblar_modbus.yaml  (present)"
     if grep -q "$MODBUS_PLACEHOLDER" "$MODBUS_TARGET" 2>/dev/null; then
-        MODBUS_NEEDS_HOST=true
+        MODBUS_ACTION_NEEDED=true
         echo ""
         warn "packages/ev_peblar_modbus.yaml still has the placeholder host"
         warn "'${MODBUS_PLACEHOLDER}'. Edit that file and set host: to your"
@@ -231,11 +240,19 @@ fi
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 hr
-echo "  Done! Next steps:"
+echo "  Done! (installed release ${RELEASE_VERSION})"
+echo ""
+echo "  Next steps:"
 echo ""
 STEP=1
 if [ "$NEEDS_ACTION" = true ]; then
     echo "  ${STEP}. Update configuration.yaml (see warnings above)"
+    STEP=$((STEP+1))
+fi
+if [ "$MODBUS_ACTION_NEEDED" = true ]; then
+    echo "  ${STEP}. Peblar Modbus (see section above) — action required:"
+    echo "     Remove the official REST integration first, restart HA, then"
+    echo "     copy and configure the Modbus yaml, then restart HA again."
     STEP=$((STEP+1))
 fi
 echo "  ${STEP}. Make sure required integrations are installed and configured"
