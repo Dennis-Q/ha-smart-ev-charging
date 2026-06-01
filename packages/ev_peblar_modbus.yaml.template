@@ -1,0 +1,877 @@
+# Peblar Modbus TCP integration for Home Assistant
+# Requires Peblar firmware >= 1.6 with Modbus API enabled.
+#
+# Before use: set the host below to your Peblar charger's IP address or hostname.
+
+modbus:
+  - name: peblar
+    type: tcp
+    host: 192.168.1.xxx  # <-- set this to your Peblar charger's IP address or hostname
+    port: 502
+    delay: 1
+    message_wait_milliseconds: 35
+    timeout: 20
+
+    sensors:
+      # ----------------------
+      # Holding registers (R/W)
+      # ----------------------
+
+      # Raw register read — backs number.peblar_ev_charger_charge_current_limit_ma
+      # and switch.peblar_ev_charger_charge. 0 = charging off; >0 = limit in mA.
+      - name: "Peblar EV Charger Charge Current Limit Raw"
+        unique_id: peblar_ev_charger_charge_current_limit_raw
+        address: 40000
+        slave: 1
+        scan_interval: 1
+        input_type: holding
+        data_type: uint32
+        unit_of_measurement: "mA"
+        device_class: current
+        state_class: measurement
+        offset: 0
+        precision: 0
+
+      # Raw register read — backs switch.peblar_ev_charger_force_single_phase. 0=3ph, 1=L1.
+      - name: "Peblar EV Charger Force Single Phase Raw"
+        unique_id: peblar_ev_charger_force_single_phase_raw
+        address: 40002
+        slave: 1
+        scan_interval: 1
+        input_type: holding
+        data_type: uint16
+        state_class: measurement
+
+      # Raw register read — backs number.peblar_ev_charger_alive_timeout
+      - name: "Peblar EV Charger Alive Timeout Raw"
+        unique_id: peblar_ev_charger_alive_timeout_raw
+        address: 40050
+        slave: 1
+        scan_interval: 60
+        input_type: holding
+        data_type: uint32
+        unit_of_measurement: "s"
+        state_class: measurement
+
+      # Raw register read — backs number.peblar_ev_charger_fallback_current
+      - name: "Peblar EV Charger Fallback Current Raw"
+        unique_id: peblar_ev_charger_fallback_current_raw
+        address: 40052
+        slave: 1
+        scan_interval: 60
+        input_type: holding
+        data_type: int32
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scale: 0.001           # mA -> A
+        offset: 0
+        precision: 3
+
+      # ----------------------
+      # Input registers (R/O)
+      # Energy meter
+      # ----------------------
+      - name: "Peblar EV Charger Lifetime energy"
+        unique_id: peblar_energy_total
+        address: 30000
+        slave: 1
+        scan_interval: 60
+        input_type: input
+        data_type: int64
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scale: 0.001           # Wh -> kWh
+        offset: 0
+        precision: 3
+
+      - name: "Peblar EV Charger Session energy"
+        unique_id: peblar_session_energy
+        address: 30004
+        slave: 1
+        scan_interval: 60
+        input_type: input
+        data_type: int64
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        scale: 0.001
+        offset: 0
+        precision: 3
+
+      - name: "Peblar EV Charger Power Phase 1"
+        unique_id: peblar_ev_charger_power_phase_1
+        address: 30008
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+
+      - name: "Peblar EV Charger Power Phase 2"
+        unique_id: peblar_ev_charger_power_phase_2
+        address: 30010
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+
+      - name: "Peblar EV Charger Power Phase 3"
+        unique_id: peblar_ev_charger_power_phase_3
+        address: 30012
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+
+      - name: "Peblar EV Charger Power"
+        unique_id: peblar_power_total
+        address: 30014
+        slave: 1
+        scan_interval: 1
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+
+      - name: "Peblar EV Charger Voltage phase 1"
+        unique_id: peblar_voltage_phase_1
+        address: 30016
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+
+      - name: "Peblar EV Charger Voltage phase 2"
+        unique_id: peblar_voltage_phase_2
+        address: 30018
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+
+      - name: "Peblar EV Charger Voltage phase 3"
+        unique_id: peblar_voltage_phase_3
+        address: 30020
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+
+      - name: "Peblar EV Charger Current phase 1"
+        unique_id: peblar_current_phase_1
+        address: 30022
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scale: 0.001           # mA -> A
+        offset: 0
+        precision: 1
+
+      - name: "Peblar EV Charger Current phase 2"
+        unique_id: peblar_current_phase_2
+        address: 30024
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scale: 0.001
+        offset: 0
+        precision: 1
+
+      - name: "Peblar EV Charger Current phase 3"
+        unique_id: peblar_current_phase_3
+        address: 30026
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        scale: 0.001
+        offset: 0
+        precision: 1
+
+      # ----------------------
+      # Input registers (R/O)
+      # System information
+      # ----------------------
+      - name: "Peblar EV Charger Product SN"
+        unique_id: peblar_ev_charger_product_sn
+        address: 30050
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: string
+        count: 12              # 24 bytes
+
+      - name: "Peblar EV Charger Product PN"
+        unique_id: peblar_ev_charger_product_pn
+        address: 30062
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: string
+        count: 12
+
+      - name: "Peblar EV Charger Firmware Version"
+        unique_id: peblar_ev_charger_firmware_version
+        address: 30074
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: string
+        count: 12
+
+      - name: "Peblar EV Charger WLAN Signal Strength"
+        unique_id: peblar_ev_charger_wlan_signal_strength
+        address: 30086
+        slave: 1
+        scan_interval: 60
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "dBm"
+        device_class: signal_strength
+        state_class: measurement
+
+      - name: "Peblar EV Charger Cellular Signal Strength"
+        unique_id: peblar_ev_charger_cellular_signal_strength
+        address: 30088
+        slave: 1
+        scan_interval: 60
+        input_type: input
+        data_type: int32
+        unit_of_measurement: "dBm"
+        device_class: signal_strength
+        state_class: measurement
+
+      - name: "Peblar EV Charger Uptime Raw"
+        unique_id: peblar_ev_charger_uptime_raw
+        address: 30090
+        slave: 1
+        scan_interval: 60
+        input_type: input
+        data_type: uint32
+        unit_of_measurement: "s"
+        state_class: measurement
+
+      - name: "Peblar EV Charger Phase Count"
+        unique_id: peblar_ev_charger_phase_count
+        address: 30092
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Independent Relays"
+        unique_id: peblar_ev_charger_independent_relays
+        address: 30093
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Warning 1"
+        unique_id: peblar_ev_charger_active_warning_1
+        address: 30100
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Warning 2"
+        unique_id: peblar_ev_charger_active_warning_2
+        address: 30101
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Warning 3"
+        unique_id: peblar_ev_charger_active_warning_3
+        address: 30102
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Warning 4"
+        unique_id: peblar_ev_charger_active_warning_4
+        address: 30103
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Warning 5"
+        unique_id: peblar_ev_charger_active_warning_5
+        address: 30104
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Error 1"
+        unique_id: peblar_ev_charger_active_error_1
+        address: 30105
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Error 2"
+        unique_id: peblar_ev_charger_active_error_2
+        address: 30106
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Error 3"
+        unique_id: peblar_ev_charger_active_error_3
+        address: 30107
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Error 4"
+        unique_id: peblar_ev_charger_active_error_4
+        address: 30108
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Active Error 5"
+        unique_id: peblar_ev_charger_active_error_5
+        address: 30109
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      # ----------------------
+      # Input registers (R/O)
+      # EV interface & Modbus API
+      # ----------------------
+
+      # Raw CP state code — backs sensor.peblar_ev_charger_state template
+      - name: "Peblar EV Charger CP State Raw"
+        unique_id: peblar_ev_charger_cp_state_raw
+        address: 30110
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      # Raw lock state code — backs sensor.peblar_ev_charger_lock_state template
+      - name: "Peblar EV Charger Lock State Raw"
+        unique_id: peblar_ev_charger_lock_state_raw
+        address: 30111
+        slave: 1
+        scan_interval: 5
+        input_type: input
+        data_type: int16
+        state_class: measurement
+
+      # Raw limit source code — backs sensor.peblar_ev_charger_limit_source template
+      - name: "Peblar EV Charger Limit Source Raw"
+        unique_id: peblar_ev_charger_limit_source_raw
+        address: 30112
+        slave: 1
+        scan_interval: 10
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      # Effective limit across all sources (lowest of REST, Modbus, cable, installation)
+      - name: "Peblar EV Charger Charge Current Limit Actual"
+        unique_id: peblar_ev_charger_charge_current_limit_actual
+        address: 30113
+        slave: 1
+        scan_interval: 1
+        input_type: input
+        data_type: uint32
+        unit_of_measurement: "mA"
+        device_class: current
+        state_class: measurement
+        offset: 0
+        precision: 0
+
+      - name: "Peblar EV Charger Hardware Identifier"
+        unique_id: peblar_ev_charger_hardware_identifier
+        address: 30122
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Modbus API Version Major"
+        unique_id: peblar_ev_charger_modbus_api_version_major
+        address: 30123
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+      - name: "Peblar EV Charger Modbus API Version Minor"
+        unique_id: peblar_ev_charger_modbus_api_version_minor
+        address: 30124
+        slave: 1
+        scan_interval: 3600
+        input_type: input
+        data_type: uint16
+        state_class: measurement
+
+# -------------------
+# Template sensors / numbers / binary sensors
+# -------------------
+
+template:
+  - sensor:
+      # Output values aligned with sensor.peblar_ev_charger_state (the
+      # official integration's enum): no_ev_connected / suspended / charging /
+      # error / fault / invalid / unknown. CP-state codes D and C both map to
+      # "charging" — D is just C with ventilation requested, same UX state.
+      - name: "Peblar EV Charger State"
+        unique_id: peblar_cp_state
+        icon: mdi:ev-station
+        state: >
+          {% set raw = states('sensor.peblar_ev_charger_cp_state_raw') %}
+          {% if raw not in ['unknown', 'unavailable', ''] %}
+            {% set code = raw | int %}
+            {% set mapping = {
+              65: 'no_ev_connected',
+              66: 'suspended',
+              67: 'charging',
+              68: 'charging',
+              69: 'error',
+              70: 'fault',
+              73: 'invalid',
+              85: 'unknown'
+            } %}
+            {{ mapping.get(code, 'unknown') }}
+          {% else %}
+            unknown
+          {% endif %}
+
+      - name: "Peblar EV Charger Lock State"
+        unique_id: peblar_lock_state
+        icon: mdi:lock
+        state: >
+          {% set raw = states('sensor.peblar_ev_charger_lock_state_raw') %}
+          {% if raw not in ['unknown', 'unavailable', ''] %}
+            {% set v = raw | int %}
+            {% if v == 0 %}unlocked{% elif v == 1 %}locked{% else %}unknown{% endif %}
+          {% else %}
+            unknown
+          {% endif %}
+
+      # Charger boot time — derived from uptime register. device_class: timestamp
+      # matches the official REST integration which exposes this as the moment
+      # the charger last booted rather than a raw seconds counter.
+      - name: "Peblar EV Charger Uptime"
+        unique_id: peblar_ev_charger_uptime
+        device_class: timestamp
+        icon: mdi:timer-outline
+        state: >
+          {{ (utcnow() - timedelta(seconds=states('sensor.peblar_ev_charger_uptime_raw') | int(0))).isoformat() }}
+
+      # Total current across all phases — diagnostic sensor matching the official
+      # integration's current_total entity (enabled_by_default: false there too).
+      - name: "Peblar EV Charger Current Total"
+        unique_id: peblar_ev_charger_current_total
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        icon: mdi:current-ac
+        state: >
+          {{ (states('sensor.peblar_ev_charger_current_phase_1') | float(0)
+            + states('sensor.peblar_ev_charger_current_phase_2') | float(0)
+            + states('sensor.peblar_ev_charger_current_phase_3') | float(0)) | round(1) }}
+
+      # Output values aligned with sensor.peblar_ev_charger_limit_source (the
+      # official integration's enum). Values match the official options list
+      # exactly so dashboards and automations can use either entity.
+      - name: "Peblar EV Charger Limit source"
+        unique_id: peblar_charge_current_limit_source_text
+        icon: mdi:source-branch
+        state: >
+          {% set raw = states('sensor.peblar_ev_charger_limit_source_raw') %}
+          {% if raw not in ['unknown', 'unavailable', ''] %}
+            {% set code = raw | int %}
+            {% set mapping = {
+              0: 'unknown',
+              1: 'charging_cable',
+              2: 'high_temperature',
+              3: 'installation_limit',
+              4: 'dynamic_load_balancing',
+              5: 'group_load_balancing',
+              6: 'current_limiter',
+              7: 'overcurrent_protection',
+              8: 'hardware_limitation',
+              9: 'power_factor',
+              10: 'ocpp_smart_charging',
+              11: 'phase_imbalance',
+              12: 'local_scheduled_charging',
+              13: 'solar_charging',
+              14: 'current_slider',
+              15: 'local_rest_api',
+              16: 'local_modbus_api',
+              17: 'external_power_limit',
+              18: 'household_power_limit',
+              19: 'reserved',
+              20: 'internal_power_limiter'
+            } %}
+            {{ mapping.get(code, 'unknown') }}
+          {% else %}
+            unknown
+          {% endif %}
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Binary sensors — mirror the official integration's aggregated error/warning
+  # signals. Aggregates the five raw uint16 registers each: ON when any is > 0.
+  # ──────────────────────────────────────────────────────────────────────────────
+  - binary_sensor:
+      - name: "Peblar EV Charger Active Errors"
+        unique_id: peblar_active_errors
+        device_class: problem
+        icon: mdi:alert-circle
+        state: >-
+          {%- set vals = [
+            states('sensor.peblar_ev_charger_active_error_1') | int(0),
+            states('sensor.peblar_ev_charger_active_error_2') | int(0),
+            states('sensor.peblar_ev_charger_active_error_3') | int(0),
+            states('sensor.peblar_ev_charger_active_error_4') | int(0),
+            states('sensor.peblar_ev_charger_active_error_5') | int(0)
+          ] -%}
+          {{ (vals | max) > 0 }}
+        attributes:
+          active_error_codes: >-
+            {%- set vals = [
+              states('sensor.peblar_ev_charger_active_error_1') | int(0),
+              states('sensor.peblar_ev_charger_active_error_2') | int(0),
+              states('sensor.peblar_ev_charger_active_error_3') | int(0),
+              states('sensor.peblar_ev_charger_active_error_4') | int(0),
+              states('sensor.peblar_ev_charger_active_error_5') | int(0)
+            ] -%}
+            {{ vals | reject('eq', 0) | list }}
+
+      - name: "Peblar EV Charger Active Warnings"
+        unique_id: peblar_active_warnings
+        device_class: problem
+        icon: mdi:alert
+        state: >-
+          {%- set vals = [
+            states('sensor.peblar_ev_charger_active_warning_1') | int(0),
+            states('sensor.peblar_ev_charger_active_warning_2') | int(0),
+            states('sensor.peblar_ev_charger_active_warning_3') | int(0),
+            states('sensor.peblar_ev_charger_active_warning_4') | int(0),
+            states('sensor.peblar_ev_charger_active_warning_5') | int(0)
+          ] -%}
+          {{ (vals | max) > 0 }}
+        attributes:
+          active_warning_codes: >-
+            {%- set vals = [
+              states('sensor.peblar_ev_charger_active_warning_1') | int(0),
+              states('sensor.peblar_ev_charger_active_warning_2') | int(0),
+              states('sensor.peblar_ev_charger_active_warning_3') | int(0),
+              states('sensor.peblar_ev_charger_active_warning_4') | int(0),
+              states('sensor.peblar_ev_charger_active_warning_5') | int(0)
+            ] -%}
+            {{ vals | reject('eq', 0) | list }}
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Switches — drop-in equivalents of the official integration's
+  #   switch.peblar_ev_charger_force_single_phase
+  #   switch.peblar_ev_charger_charge
+  # New-style template format so unique_id: is supported and entities are
+  # tracked in the entity registry.
+  # ──────────────────────────────────────────────────────────────────────────────
+  - switch:
+      - name: "Peblar EV Charger Force single phase"
+        unique_id: peblar_ev_charger_force_single_phase
+        icon: >
+          {% if is_state('switch.peblar_ev_charger_force_single_phase', 'on') %}
+            mdi:transmission-tower-import
+          {% else %}
+            mdi:transmission-tower
+          {% endif %}
+        state: >
+          {% set raw = states('sensor.peblar_ev_charger_force_single_phase_raw') %}
+          {% if raw not in ['unknown', 'unavailable', ''] %}
+            {{ raw | int == 1 }}
+          {% else %}
+            false
+          {% endif %}
+        turn_on:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40002
+              slave: 1
+              value: 1
+        turn_off:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40002
+              slave: 1
+              value: 0
+
+      - name: "Peblar EV Charger Charge"
+        unique_id: peblar_ev_charger_charge
+        icon: >
+          {% if is_state('switch.peblar_ev_charger_charge', 'on') %}
+            mdi:power-plug
+          {% else %}
+            mdi:power-plug-off
+          {% endif %}
+        # On if the effective charge current limit is at or above the 6 A minimum
+        # (6000 mA) — matches the official REST integration's is_on threshold.
+        state: >
+          {{ (states('sensor.peblar_ev_charger_charge_current_limit_actual') | float(0)) >= 6000 }}
+        # Turning on writes a charge limit (mA) to register 40000 as a 32-bit
+        # value split into two 16-bit big-endian words.
+        # Floored at 6000 mA: when the switch is off, register 40000 reads 0,
+        # so without the floor, turn_on would write 0 (a no-op — switch flips
+        # on visually but charging stays off). 6000 mA = 6 A is the legal
+        # minimum and matches the Peblar's natural "start charging" behaviour.
+        turn_on:
+          - variables:
+              limit: >-
+                {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000, 6000] | max }}
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40000
+              slave: 1
+              value:
+                - "{{ (limit | int) // 65536 }}"
+                - "{{ (limit | int) % 65536 }}"
+        # Turn off writes 0 to pause charging
+        turn_off:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40000
+              slave: 1
+              value:
+                - 0
+                - 0
+
+  - number:
+      - name: Peblar EV Charger Charge Current Limit mA
+        unique_id: peblar_ev_charger_charge_current_limit_ma
+        icon: mdi:current-ac
+        unit_of_measurement: "mA"
+        state: "{{ states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) }}"
+        set_value:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40000
+              slave: 1
+              # 32‑bit unsigned value split into two 16‑bit words (big‑endian)
+              value:
+                - "{{ (value | int) // 65536 }}"   # high word
+                - "{{ (value | int) % 65536 }}"    # low word
+        step: 1
+        min: 6000
+        max: 16000
+
+      - name: Peblar EV Charger Alive Timeout
+        unique_id: peblar_ev_charger_alive_timeout
+        icon: mdi:timer-outline
+        unit_of_measurement: "s"
+        state: "{{ states('sensor.peblar_ev_charger_alive_timeout_raw') | int(0) }}"
+        set_value:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40050
+              slave: 1
+              # 32‑bit unsigned seconds → two 16‑bit words
+              value:
+                - "{{ (value | int) // 65536 }}"   # high word
+                - "{{ (value | int) % 65536 }}"    # low word
+        step: 10
+        min: 0
+        max: 3600
+
+      # Drop-in equivalent of the official integration's
+      # number.peblar_ev_charger_charge_limit — 6-16 A integer slider.
+      #
+      # Reads back the EFFECTIVE limit from
+      # sensor.peblar_ev_charger_charge_current_limit_actual (register 30113 —
+      # lowest of all limiting sources) so the slider reflects what the car sees.
+      #
+      # When charging is off (register 40000 = 0), reads from
+      # input_number.peblar_ev_charger_charge_limit_desired so the configured
+      # value persists across charge-off cycles without accidentally starting a
+      # new session.
+      - name: Peblar EV Charger Charge limit
+        unique_id: peblar_charge_limit
+        icon: mdi:current-ac
+        unit_of_measurement: "A"
+        device_class: current
+        state: >
+          {% set reg = states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) %}
+          {% if reg > 0 %}
+            {{ [[reg / 1000 | round(0) | int, 6] | max, 16] | min }}
+          {% else %}
+            {{ [[states('input_number.peblar_ev_charger_charge_limit_desired') | float(6), 6] | max, 16] | min }}
+          {% endif %}
+        set_value:
+          # Always persist the desired value so it survives charge-off cycles.
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.peblar_ev_charger_charge_limit_desired
+            data:
+              value: "{{ value }}"
+          # Only push to the register when charging is already on; otherwise
+          # writing a non-zero value to 40000 would silently start charging.
+          - condition: template
+            value_template: "{{ is_state('switch.peblar_ev_charger_charge', 'on') }}"
+          - service: number.set_value
+            target:
+              entity_id: number.peblar_ev_charger_charge_current_limit_ma
+            data:
+              value: "{{ (value * 1000) | int }}"
+        step: 1
+        min: 6
+        max: 16
+
+      - name: Peblar EV Charger Fallback Current
+        unique_id: peblar_ev_charger_fallback_current
+        icon: mdi:current-ac
+        unit_of_measurement: "A"
+        state: "{{ states('sensor.peblar_ev_charger_fallback_current_raw') | float(0) }}"
+        set_value:
+          - service: modbus.write_register
+            data:
+              hub: peblar
+              address: 40052
+              slave: 1
+              # Convert A → mA, then split 32‑bit int into two 16‑bit words
+              value:
+                - "{{ ((value * 1000) | int) // 65536 }}"   # high word
+                - "{{ ((value * 1000) | int) % 65536 }}"    # low word
+        step: 1
+        min: 0
+        max: 16
+
+input_number:
+  # Backing store for the user-facing charge limit slider. Decoupled from
+  # register 40000 so the limit can be configured while charging is off
+  # without accidentally starting a charge session.
+  peblar_ev_charger_charge_limit_desired:
+    name: "Peblar EV Charger Charge Limit (Desired)"
+    min: 6
+    max: 16
+    step: 1
+    unit_of_measurement: "A"
+    mode: box
+    icon: mdi:current-ac
+
+# ── Recorder exclusions ────────────────────────────────────────────────────
+# Keep: sensor.peblar_ev_charger_power, session/lifetime energy, state,
+#   limit_source, active_warnings/errors + their 5 code slots, uptime
+#   (timestamp), lock_state, number.peblar_ev_charger_charge_limit,
+#   switch.peblar_ev_charger_charge/force_single_phase.
+#
+# Exclude:
+#   • All _raw Modbus sensors — internal backing registers only; the template
+#     entities above are the user-facing equivalent.
+#   • Per-phase power/current/voltage — high-frequency diagnostics; total
+#     power is enough for session analysis.
+#   • current_total — diagnostic sum, redundant with per-phase.
+#   • Signal strength / uptime_raw / alive_timeout_raw / fallback_current_raw
+#     — never changes usefully or is superseded by the timestamp sensor.
+#   • Static system-info registers (hardware_id, api_version, phase_count,
+#     independent_relays) — written once at boot, no history value.
+#   • number.peblar_ev_charger_charge_current_limit_ma — written at 3 s
+#     by the solar control loop; the A-slider history is sufficient.
+#   • number.peblar_ev_charger_alive_timeout / fallback_current — config
+#     values that almost never change.
+recorder:
+  exclude:
+    entities:
+      # Raw Modbus register reads (internal)
+      - sensor.peblar_ev_charger_charge_current_limit_raw
+      - sensor.peblar_ev_charger_force_single_phase_raw
+      - sensor.peblar_ev_charger_charge_current_limit_actual
+      - sensor.peblar_ev_charger_cp_state_raw
+      - sensor.peblar_ev_charger_lock_state_raw
+      - sensor.peblar_ev_charger_limit_source_raw
+      - sensor.peblar_ev_charger_alive_timeout_raw
+      - sensor.peblar_ev_charger_fallback_current_raw
+      - sensor.peblar_ev_charger_uptime_raw
+      # Per-phase diagnostics (high-frequency, total power kept)
+      - sensor.peblar_ev_charger_power_phase_1
+      - sensor.peblar_ev_charger_power_phase_2
+      - sensor.peblar_ev_charger_power_phase_3
+      - sensor.peblar_ev_charger_current_phase_1
+      - sensor.peblar_ev_charger_current_phase_2
+      - sensor.peblar_ev_charger_current_phase_3
+      - sensor.peblar_ev_charger_current_total
+      - sensor.peblar_ev_charger_voltage_phase_1
+      - sensor.peblar_ev_charger_voltage_phase_2
+      - sensor.peblar_ev_charger_voltage_phase_3
+      # Signal strength / connectivity (WLAN always -1000, on Ethernet)
+      - sensor.peblar_ev_charger_wlan_signal_strength
+      - sensor.peblar_ev_charger_cellular_signal_strength
+      # Static system-info (set once at boot)
+      - sensor.peblar_ev_charger_hardware_identifier
+      - sensor.peblar_ev_charger_modbus_api_version_major
+      - sensor.peblar_ev_charger_modbus_api_version_minor
+      - sensor.peblar_ev_charger_phase_count
+      - sensor.peblar_ev_charger_independent_relays
+      # High-frequency mA setpoint (solar loop writes every 3 s; A-slider kept)
+      - number.peblar_ev_charger_charge_current_limit_ma
+      # Config-only numbers (rarely change)
+      - number.peblar_ev_charger_alive_timeout
+      - number.peblar_ev_charger_fallback_current
