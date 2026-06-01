@@ -51,7 +51,7 @@ exact available power without rounding to whole amps.
 
 1. **Remove the official Peblar REST integration** from
    Settings → Devices & Services. After removal, check for leftover entities
-   in Developer Tools → States — filter on `peblar_ev_charger` and delete any
+   in Developer Tools → States — filter on `peblar` and delete any
    that are still listed with state `unavailable`.
 
 2. **Copy** `packages/ev_peblar_modbus.yaml.template` to your `/config/packages/`
