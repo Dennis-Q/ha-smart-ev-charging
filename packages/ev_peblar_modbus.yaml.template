@@ -73,7 +73,7 @@ modbus:
       # Energy meter
       # ----------------------
       - name: "Peblar EV Charger Lifetime energy"
-        unique_id: peblar_energy_total
+        unique_id: peblar_ev_charger_lifetime_energy
         address: 30000
         slave: 1
         scan_interval: 60
@@ -87,7 +87,7 @@ modbus:
         precision: 3
 
       - name: "Peblar EV Charger Session energy"
-        unique_id: peblar_session_energy
+        unique_id: peblar_ev_charger_session_energy
         address: 30004
         slave: 1
         scan_interval: 60
@@ -134,7 +134,7 @@ modbus:
         state_class: measurement
 
       - name: "Peblar EV Charger Power"
-        unique_id: peblar_power_total
+        unique_id: peblar_ev_charger_power
         address: 30014
         slave: 1
         scan_interval: 1
@@ -145,7 +145,7 @@ modbus:
         state_class: measurement
 
       - name: "Peblar EV Charger Voltage phase 1"
-        unique_id: peblar_voltage_phase_1
+        unique_id: peblar_ev_charger_voltage_phase_1
         address: 30016
         slave: 1
         scan_interval: 10
@@ -156,7 +156,7 @@ modbus:
         state_class: measurement
 
       - name: "Peblar EV Charger Voltage phase 2"
-        unique_id: peblar_voltage_phase_2
+        unique_id: peblar_ev_charger_voltage_phase_2
         address: 30018
         slave: 1
         scan_interval: 10
@@ -167,7 +167,7 @@ modbus:
         state_class: measurement
 
       - name: "Peblar EV Charger Voltage phase 3"
-        unique_id: peblar_voltage_phase_3
+        unique_id: peblar_ev_charger_voltage_phase_3
         address: 30020
         slave: 1
         scan_interval: 10
@@ -178,7 +178,7 @@ modbus:
         state_class: measurement
 
       - name: "Peblar EV Charger Current phase 1"
-        unique_id: peblar_current_phase_1
+        unique_id: peblar_ev_charger_current_phase_1
         address: 30022
         slave: 1
         scan_interval: 5
@@ -192,7 +192,7 @@ modbus:
         precision: 1
 
       - name: "Peblar EV Charger Current phase 2"
-        unique_id: peblar_current_phase_2
+        unique_id: peblar_ev_charger_current_phase_2
         address: 30024
         slave: 1
         scan_interval: 5
@@ -206,7 +206,7 @@ modbus:
         precision: 1
 
       - name: "Peblar EV Charger Current phase 3"
-        unique_id: peblar_current_phase_3
+        unique_id: peblar_ev_charger_current_phase_3
         address: 30026
         slave: 1
         scan_interval: 5
@@ -477,7 +477,7 @@ template:
       # error / fault / invalid / unknown. CP-state codes D and C both map to
       # "charging" — D is just C with ventilation requested, same UX state.
       - name: "Peblar EV Charger State"
-        unique_id: peblar_cp_state
+        unique_id: peblar_ev_charger_state
         icon: mdi:ev-station
         state: >
           {% set raw = states('sensor.peblar_ev_charger_cp_state_raw') %}
@@ -499,7 +499,7 @@ template:
           {% endif %}
 
       - name: "Peblar EV Charger Lock State"
-        unique_id: peblar_lock_state
+        unique_id: peblar_ev_charger_lock_state
         icon: mdi:lock
         state: >
           {% set raw = states('sensor.peblar_ev_charger_lock_state_raw') %}
@@ -537,7 +537,7 @@ template:
       # official integration's enum). Values match the official options list
       # exactly so dashboards and automations can use either entity.
       - name: "Peblar EV Charger Limit source"
-        unique_id: peblar_charge_current_limit_source_text
+        unique_id: peblar_ev_charger_limit_source
         icon: mdi:source-branch
         state: >
           {% set raw = states('sensor.peblar_ev_charger_limit_source_raw') %}
@@ -577,7 +577,7 @@ template:
   # ──────────────────────────────────────────────────────────────────────────────
   - binary_sensor:
       - name: "Peblar EV Charger Active Errors"
-        unique_id: peblar_active_errors
+        unique_id: peblar_ev_charger_active_errors
         device_class: problem
         icon: mdi:alert-circle
         state: >-
@@ -601,7 +601,7 @@ template:
             {{ vals | reject('eq', 0) | list }}
 
       - name: "Peblar EV Charger Active Warnings"
-        unique_id: peblar_active_warnings
+        unique_id: peblar_ev_charger_active_warnings
         device_class: problem
         icon: mdi:alert
         state: >-
@@ -754,7 +754,7 @@ template:
       # value persists across charge-off cycles without accidentally starting a
       # new session.
       - name: Peblar EV Charger Charge limit
-        unique_id: peblar_charge_limit
+        unique_id: peblar_ev_charger_charge_limit
         icon: mdi:current-ac
         unit_of_measurement: "A"
         device_class: current
