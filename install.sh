@@ -172,33 +172,47 @@ ok "packages/.ev_charging_version  (${RELEASE_VERSION})"
 echo ""
 
 # ── Peblar Modbus integration (optional) ──────────────────────────────────────
-# The template is always downloaded as a reference.
 # If ev_peblar_modbus.yaml already exists it is safe to overwrite — the
-# charger host lives in secrets.yaml (peblar_host), not in this file.
-# The file is NOT created automatically on first install: activating Modbus
-# while the official REST integration is still running will break charging.
+# charger host lives in secrets.yaml (peblar_host:), not in this file.
+# On first install the user must confirm the official REST integration is
+# already removed before we create the file, otherwise both integrations
+# fight for control and the Peblar applies the lowest limit (0 mA = no charging).
 
-MODBUS_TEMPLATE="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml.template"
 MODBUS_TARGET="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"
 MODBUS_NOT_INSTALLED=false
+MODBUS_JUST_CREATED=false
 MODBUS_SECRET_MISSING=false
 
 echo "Peblar Modbus integration:"
 
-download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TEMPLATE"
-ok "packages/ev_peblar_modbus.yaml.template  (reference template — updated)"
-
 if [ ! -f "$MODBUS_TARGET" ]; then
-    MODBUS_NOT_INSTALLED=true
-    warn "packages/ev_peblar_modbus.yaml not found — Modbus not active. See next steps below."
+    echo ""
+    warn "ev_peblar_modbus.yaml not found — Modbus control not active."
+    warn "The official Peblar REST integration must be removed first;"
+    warn "otherwise both compete and the charger applies the lowest limit (0 mA)."
+    echo ""
+    if ask "Have you already removed the official Peblar integration and restarted HA?"; then
+        if ! grep -q "^peblar_host:" "${CONFIG_DIR}/secrets.yaml" 2>/dev/null; then
+            MODBUS_SECRET_MISSING=true
+            warn "secrets.yaml does not contain 'peblar_host'. Add it first:"
+            say "    peblar_host: 192.168.1.x   # your Peblar charger's IP or hostname"
+            warn "Then re-run this installer to complete Modbus activation."
+        else
+            download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
+            ok "packages/ev_peblar_modbus.yaml  (created)"
+            MODBUS_JUST_CREATED=true
+        fi
+    else
+        MODBUS_NOT_INSTALLED=true
+        info "Skipped. See next steps below for the full activation procedure."
+    fi
 else
     download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
     ok "packages/ev_peblar_modbus.yaml  (updated)"
-    if ! grep -q "peblar_host" "${CONFIG_DIR}/secrets.yaml" 2>/dev/null; then
+    if ! grep -q "^peblar_host:" "${CONFIG_DIR}/secrets.yaml" 2>/dev/null; then
         MODBUS_SECRET_MISSING=true
         warn "secrets.yaml does not contain 'peblar_host'. Add:"
-        warn "    peblar_host: 192.168.1.x  # your Peblar charger's IP or hostname"
-        warn "Then validate YAML and restart HA."
+        say "    peblar_host: 192.168.1.x   # your Peblar charger's IP or hostname"
     fi
 fi
 
@@ -261,22 +275,21 @@ echo "  ${STEP}. Restart Home Assistant:"
 echo "     Settings → System → Restart → Restart Home Assistant"
 STEP=$((STEP+1))
 if [ "$MODBUS_NOT_INSTALLED" = true ]; then
-    echo "  ${STEP}. After restart — delete leftover Peblar entities:"
-    echo "     Developer Tools → States → search for 'peblar'"
-    echo "     Delete any entities still listed as 'unavailable'."
+    echo "  ${STEP}. To enable Peblar Modbus control (when ready):"
+    echo "     a) Remove the official Peblar integration:"
+    echo "        Settings → Devices & Services → Peblar → Delete"
+    echo "     b) Restart HA, then delete any leftover unavailable peblar_* entities:"
+    echo "        Developer Tools → States → search 'peblar' → delete unavailable"
+    echo "     c) Add to secrets.yaml:  peblar_host: <your charger IP or hostname>"
+    echo "     d) Re-run this installer — it will create ev_peblar_modbus.yaml"
     STEP=$((STEP+1))
-    echo "  ${STEP}. Activate Peblar Modbus:"
-    echo "     a) Add your charger's IP/hostname to secrets.yaml:"
-    echo "        peblar_host: 192.168.1.x"
-    echo "     b) Copy the template:"
-    echo "        cp /config/packages/ev_peblar_modbus.yaml.template \\"
-    echo "           /config/packages/ev_peblar_modbus.yaml"
-    STEP=$((STEP+1))
-    echo "  ${STEP}. Validate YAML and restart HA again (same as the two steps above)."
+elif [ "$MODBUS_JUST_CREATED" = true ]; then
+    echo "  ${STEP}. Delete leftover entities from the removed Peblar REST integration:"
+    echo "     Developer Tools → States → search 'peblar' → delete unavailable"
     STEP=$((STEP+1))
 elif [ "$MODBUS_SECRET_MISSING" = true ]; then
-    echo "  ${STEP}. Add your charger's IP/hostname to secrets.yaml (see warning above)."
-    echo "     Then validate YAML and restart HA again (same as the two steps above)."
+    echo "  ${STEP}. Add peblar_host to secrets.yaml (see warning above),"
+    echo "     then re-run this installer."
     STEP=$((STEP+1))
 fi
 echo "  ${STEP}. Run script.ev_apply_defaults:"
