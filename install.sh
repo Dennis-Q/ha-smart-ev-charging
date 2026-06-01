@@ -123,10 +123,14 @@ if [ ${#LEGACY_FILES[@]} -gt 0 ]; then
     warn "(e.g. *.disabled) to opt out of HA's package loader. Then re-run."
     echo ""
     echo "      # Disable (keeps the files around):"
-    echo "      for f in \"\${files[@]}\"; do mv \"\$f\" \"\$f.disabled\"; done"
+    for f in "${LEGACY_FILES[@]}"; do
+        echo "      mv \"$f\" \"$f.disabled\""
+    done
     echo ""
     echo "      # Or delete:"
-    echo "      for f in \"\${files[@]}\"; do rm \"\$f\"; done"
+    for f in "${LEGACY_FILES[@]}"; do
+        echo "      rm \"$f\""
+    done
     echo ""
     echo "      # Also remove any stale dashboard registration in configuration.yaml"
     echo "      # (look for 'filename: lovelace/evcharging_dashboard.yaml')"
