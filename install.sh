@@ -99,38 +99,34 @@ echo ""
 # (or any other extension) opts out of this check, which is the
 # documented way to keep an old file around without removing it.
 
-shopt -s nullglob
-LEGACY_FILES=(
-    "${CONFIG_DIR}"/packages/evcharging_*.yaml
-    "${CONFIG_DIR}"/packages/evcharging_*.yml
-    "${CONFIG_DIR}"/lovelace/evcharging_*.yaml
-    "${CONFIG_DIR}"/lovelace/evcharging_*.yml
-)
-shopt -u nullglob
+LEGACY_FILES=()
+while IFS= read -r -d '' f; do
+    LEGACY_FILES+=("$f")
+done < <(find \
+    "${CONFIG_DIR}/packages" \
+    "${CONFIG_DIR}/lovelace" \
+    -maxdepth 2 \( -name 'evcharging_*.yaml' -o -name 'evcharging_*.yml' \) \
+    -print0 2>/dev/null | sort -z)
 
 if [ ${#LEGACY_FILES[@]} -gt 0 ]; then
     echo ""
-    warn "Legacy 'evcharging_*.{yaml,yml}' files from a previous install were"
-    warn "found — these will CLASH with the new 'ev_*' files (duplicate entity"
-    warn "definitions → YAML silently drops one block → entities disappear at"
-    warn "runtime):"
+    warn "Legacy 'evcharging_*' files from a previous install were found — these"
+    warn "will CLASH with the new 'ev_*' files (duplicate entity definitions →"
+    warn "YAML silently drops one block → entities disappear at runtime):"
     for f in "${LEGACY_FILES[@]}"; do
         echo "      $f"
     done
     echo ""
     warn "Either delete them, or rename them to something other than .yaml/.yml"
-    warn "(e.g. *.disabled) to opt out of HA's package loader without losing"
-    warn "the file. Then re-run this installer."
+    warn "(e.g. *.disabled) to opt out of HA's package loader. Then re-run."
     echo ""
-    echo "      # Delete:"
-    echo "      rm ${CONFIG_DIR}/packages/evcharging_*.yaml ${CONFIG_DIR}/lovelace/evcharging_*.yaml"
+    echo "      # Disable (keeps the files around):"
+    echo "      for f in \"\${files[@]}\"; do mv \"\$f\" \"\$f.disabled\"; done"
     echo ""
-    echo "      # Or disable (keeps the file around):"
-    echo "      for f in ${CONFIG_DIR}/packages/evcharging_*.yaml ${CONFIG_DIR}/lovelace/evcharging_*.yaml; do"
-    echo "        [ -e \"\$f\" ] && mv \"\$f\" \"\$f.disabled\""
-    echo "      done"
+    echo "      # Or delete:"
+    echo "      for f in \"\${files[@]}\"; do rm \"\$f\"; done"
     echo ""
-    echo "      # And remove the stale dashboard registration in configuration.yaml"
+    echo "      # Also remove any stale dashboard registration in configuration.yaml"
     echo "      # (look for 'filename: lovelace/evcharging_dashboard.yaml')"
     echo ""
     echo "Aborting to avoid leaving you with a broken install."
