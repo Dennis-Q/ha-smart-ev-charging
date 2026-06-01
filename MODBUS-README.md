@@ -26,9 +26,18 @@ exact available power without rounding to whole amps.
 
 ## Requirements
 
-- Peblar EV charger with firmware ≥ 1.6 and **Modbus TCP enabled**
-  (Settings → Connectivity → Modbus API → enable).
+- Peblar EV charger with firmware ≥ 1.6.
+- **Modbus TCP enabled and set to Read/Write** in the Peblar web interface:
+  Settings → Connectivity → Modbus API → enable, access level = **Read/Write**.
+  Read-only mode is not sufficient — the integration must be able to write the
+  current setpoint and phase-mode registers.
 - The charger must be reachable on your LAN. Default port: **502**.
+
+> **REST API:** Consider setting the Peblar REST API to read-only
+> (same settings page) so it cannot interfere if the official HA integration is
+> ever re-added by accident. Note that the official Peblar HA integration
+> re-enables the REST API when active, so removing it from HA
+> (Settings → Devices & Services) is the more reliable safeguard.
 
 > **Important:** The official REST integration must be removed **before**
 > activating this file. The Peblar applies the lowest limit across all active
