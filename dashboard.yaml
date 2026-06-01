@@ -122,6 +122,24 @@ views:
               - condition: numeric_state
                 entity: input_number.ev_solar_min_charge_threshold_w
                 above: 1380
+      # ── Yellow banner: P1 sensor unit mismatch ────────────────────────────
+      # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
+      # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
+      # to W, but other units (Wh, kWh, etc.) will produce wrong results.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="warning"><strong>P1 sensor unit
+          mismatch</strong><br>One or both P1 power sensors are not reporting
+          in <strong>W</strong>. The solar excess calculation expects watts.<br>
+          • Consumption: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_consumption') }}</strong><br>
+          • Production: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_production') }}</strong><br><br>
+          If your P1 integration reports in <strong>kW</strong>, the calculation
+          auto-scales — solar charging will work correctly. For any other unit,
+          check your P1 meter integration configuration.</ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_p1_unit_mismatch
+            state: "on"
       - type: entities
         title: EV Charging Settings
         entities:
