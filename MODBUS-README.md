@@ -54,9 +54,26 @@ exact available power without rounding to whole amps.
    in Developer Tools → States — filter on `peblar` and delete any
    that are still listed with state `unavailable`.
 
-2. **Copy** `packages/ev_peblar_modbus.yaml.template` to your `/config/packages/`
-   directory, rename it to `ev_peblar_modbus.yaml`, and set the `host:` value
-   at the top to your charger's IP address or hostname.
+2. **Install the Modbus package.** Two options:
+
+   **Option A — via `install.sh`** (recommended if you used it to install the
+   project): re-run the installer and it will download the latest template to
+   `/config/packages/ev_peblar_modbus.yaml.template` and print the steps to
+   activate it.
+
+   ```sh
+   bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/install.sh)
+   ```
+
+   **Option B — manually**: copy the template and rename it:
+
+   ```sh
+   cp /config/packages/ev_peblar_modbus.yaml.template \
+      /config/packages/ev_peblar_modbus.yaml
+   ```
+
+   Either way, open `/config/packages/ev_peblar_modbus.yaml` and set the
+   `host:` value at the top to your charger's IP address or hostname.
 
 3. Do a **full HA restart** (not just reload) — the Modbus hub only
    initialises at startup.
