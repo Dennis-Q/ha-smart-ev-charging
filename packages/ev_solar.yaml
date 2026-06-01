@@ -116,6 +116,57 @@ template:
             0
           {% endif %}
 
+      # Calculate available charging milliamps for SINGLE PHASE.
+      # Same voltage fallback logic as the amp sensor above, but working in mA
+      # gives 1 mA (≈ 0.23 W) precision instead of 1 A (≈ 230 W). floor() is
+      # kept for the same stability reason documented above — avoids half-amp
+      # boundary oscillation. The "up to 1 A wasted" comment no longer applies
+      # here; the floor error is now ≤ 0.23 W per cycle.
+      - name: "EV Available Charging mA Single Phase"
+        unique_id: ev_available_charging_ma_single_phase
+        unit_of_measurement: "mA"
+        state: >
+          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
+          {% set voltage = v_l1 if v_l1 > 100 else 230 %}
+          {% set min_ma = 6000 %}
+          {% set max_ma = 16000 %}
+          {% if excess_power > 0 %}
+            {% set calculated_ma = (excess_power / voltage * 1000) | round(0, 'floor') | int %}
+            {% if calculated_ma >= min_ma %}
+              {{ [calculated_ma, max_ma] | min }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+
+      # Calculate available charging milliamps for THREE PHASE.
+      # Uses sum of live phase voltages as the divisor, same as the amp sensor.
+      - name: "EV Available Charging mA Three Phase"
+        unique_id: ev_available_charging_ma_three_phase
+        unit_of_measurement: "mA"
+        state: >
+          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
+          {% set v_l2 = states('sensor.peblar_ev_charger_voltage_phase_2') | float(0) %}
+          {% set v_l3 = states('sensor.peblar_ev_charger_voltage_phase_3') | float(0) %}
+          {% set v_sum = v_l1 + v_l2 + v_l3 %}
+          {% set voltage_3phase = v_sum if v_sum > 300 else 690 %}
+          {% set min_ma = 6000 %}
+          {% set max_ma = 16000 %}
+          {% if excess_power > 0 %}
+            {% set calculated_ma = (excess_power / voltage_3phase * 1000) | round(0, 'floor') | int %}
+            {% if calculated_ma >= min_ma %}
+              {{ [calculated_ma, max_ma] | min }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+
       # Determine optimal phase mode
       - name: "EV Optimal Charging Phase Mode"
         unique_id: ev_optimal_charging_phase_mode
@@ -218,11 +269,11 @@ automation:
             sequence:
               - action: number.set_value
                 target:
-                  entity_id: number.peblar_ev_charger_charge_limit
+                  entity_id: number.peblar_ev_charger_charge_current_limit_ma
                 data:
                   value: >
-                    {% set amps = states('sensor.ev_available_charging_amps_single_phase') | int(6) %}
-                    {{ amps if amps >= 6 else 6 }}
+                    {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                    {{ ma if ma >= 6000 else 6000 }}
               - action: switch.turn_on # force single phase charging
                 target:
                   entity_id: switch.peblar_ev_charger_force_single_phase
@@ -234,11 +285,11 @@ automation:
               - condition: trigger
                 id: ev_3p
             sequence:
-              - action: number.set_value # start with a safe 6A when switching to 3P
+              - action: number.set_value # start with a safe 6 A (6000 mA) when switching to 3P
                 target:
-                  entity_id: number.peblar_ev_charger_charge_limit
+                  entity_id: number.peblar_ev_charger_charge_current_limit_ma
                 data:
-                  value: 6
+                  value: 6000
               - action: switch.turn_off # switch to 3-phase mode
                 target:
                   entity_id: switch.peblar_ev_charger_force_single_phase
@@ -275,25 +326,25 @@ automation:
     actions:
       - action: number.set_value
         target:
-          entity_id: number.peblar_ev_charger_charge_limit
+          entity_id: number.peblar_ev_charger_charge_current_limit_ma
         data:
           value: >
             {% set mode = states('sensor.ev_optimal_charging_phase_mode') %}
-            {% set amps_3f = states('sensor.ev_available_charging_amps_three_phase') | int(0) %}
-            {% set amps_1f = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
+            {% set ma_3f = states('sensor.ev_available_charging_ma_three_phase') | int(0) %}
+            {% set ma_1f = states('sensor.ev_available_charging_ma_single_phase') | int(0) %}
             {% set single_phase_mode = is_state('switch.peblar_ev_charger_force_single_phase', 'on') %}
             {% if mode == 'stop' %}
-              6
+              6000
             {% elif mode == 'three_phase' and single_phase_mode %}
               {# Enough power for 3-phase but still in 1-phase-mode, so max power! #}
-              16
+              16000
             {% elif mode == 'three_phase' and not single_phase_mode %}
               {# Three-phase mode and active #}
-              {{ amps_3f if amps_3f >= 6 else 6 }}
+              {{ ma_3f if ma_3f >= 6000 else 6000 }}
             {% elif mode == 'single_phase' and not single_phase_mode %}
               {# Single phase mode but not active yet #}
-              6
+              6000
             {% else %}
               {# Single phase mode and also active #}
-              {{ amps_1f if amps_1f >= 6 else 6 }}
+              {{ ma_1f if ma_1f >= 6000 else 6000 }}
             {% endif %}
