@@ -99,14 +99,16 @@ echo ""
 # (or any other extension) opts out of this check, which is the
 # documented way to keep an old file around without removing it.
 
-LEGACY_FILES=()
-while IFS= read -r -d '' f; do
-    LEGACY_FILES+=("$f")
-done < <(find \
-    "${CONFIG_DIR}/packages" \
-    "${CONFIG_DIR}/lovelace" \
-    -maxdepth 2 \( -name 'evcharging_*.yaml' -o -name 'evcharging_*.yml' \) \
-    -print0 2>/dev/null | sort -z)
+shopt -s nullglob
+LEGACY_FILES=(
+    "${CONFIG_DIR}"/packages/evcharging_*.yaml
+    "${CONFIG_DIR}"/packages/evcharging_*.yml
+    "${CONFIG_DIR}"/packages/evcharging/evcharging_*.yaml
+    "${CONFIG_DIR}"/packages/evcharging/evcharging_*.yml
+    "${CONFIG_DIR}"/lovelace/evcharging_*.yaml
+    "${CONFIG_DIR}"/lovelace/evcharging_*.yml
+)
+shopt -u nullglob
 
 if [ ${#LEGACY_FILES[@]} -gt 0 ]; then
     echo ""
