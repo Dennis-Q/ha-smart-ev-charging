@@ -20,43 +20,17 @@ input_number:
 
 sensor:
   - platform: statistics
-    name: "Grid Excess Power Last 2 Average"
-    unique_id: grid_excess_power_last_2_average
-    entity_id: sensor.grid_excess_power
-    state_characteristic: mean # This calculates the average
-    sampling_size: 2
-
-  - platform: statistics
-    name: "Grid Excess Power Last 3 Average"
-    unique_id: grid_excess_power_last_3_average
-    entity_id: sensor.grid_excess_power
+    name: "EV Grid Excess Power Last 3 Average"
+    unique_id: ev_grid_excess_power_last_3_average
+    entity_id: sensor.ev_grid_excess_power
     state_characteristic: mean # This calculates the average
     sampling_size: 3
 
 template:
   - sensor:
-      # Calculate ACTUAL available solar power for EV charging
-      - name: "Grid Excess Power"
-        unique_id: grid_excess_power
-        unit_of_measurement: "W"
-        device_class: power
-        state_class: measurement
-        state: >
-          {% set solar_production_enphase = states('sensor.envoy_122109029426_current_power_production') | float(0) * 1000 %}
-          {% set solar_production_solaredge = states('sensor.solaredge_ac_power') | float(0) %}
-          {% set solar_production = solar_production_enphase + solar_production_solaredge %}
-          {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
-          {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
-          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(0) %}
-          {% set total_consumption = solar_production - grid_export + grid_import %}
-          {% set base_home_consumption = total_consumption - charger_power %}
-          {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
-          {% set excess = solar_production - base_home_consumption - buffer %}
-          {{ excess | round(0) }}
-
-      # Calculate ACTUAL available grid export power for EV charging (without solar production)
-      - name: "Grid Excess Power (Grid Only)"
-        unique_id: grid_excess_power_grid_only
+      # Calculate available grid export power for EV charging (derived from P1 meter)
+      - name: "EV Grid Excess Power"
+        unique_id: ev_grid_excess_power
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
@@ -69,13 +43,34 @@ template:
           {% set excess = current_power + charger_power - buffer %}
           {{ excess | round(0) }}
 
-      # Calculate available charging amps for SINGLE PHASE
+      # Calculate available charging amps for SINGLE PHASE.
+      # Uses the live Peblar L1 voltage (Peblar charges single-phase on L1)
+      # instead of a hardcoded 230 V — actual mains voltage varies (~220-245 V
+      # in NL). Falls back to 230 V if the sensor is missing/unreachable.
+      #
+      # Why floor() instead of round(): plain round() was tried (see commit
+      # 4feff0e) and reverted (see follow-up commit) because it visibly
+      # destabilised the loop. Real-world logbook over ~10 minutes:
+      #   floor: amp commands stayed in a 2 A window (12-14)
+      #   round: amp commands swung across a 5 A window (11-16)
+      # The 3-sample average is just noisy enough that rounding at half-amp
+      # boundaries flips integer output cycle-to-cycle. floor()'s guarantee
+      # of never overshooting also stops the feedback loop where bumping up
+      # one amp draws more grid power, briefly shrinking excess, dropping
+      # back down, etc.
+      # Trade-off: floor() leaves up to 1 A worth (~230 W) of solar exported
+      # at the boundary each cycle. Closing that gap properly would need
+      # something more sophisticated than rounding — e.g. hysteresis ("only
+      # change current command if new desired amps differs by ≥ 1 A from
+      # the actually-flowing current"), or PID-style integration. Worth a
+      # future iteration once we have data on charging-session totals.
       - name: "EV Available Charging Amps Single Phase"
         unique_id: ev_available_charging_amps_single_phase
         unit_of_measurement: "A"
         state: >
-          {% set excess_power = states('sensor.grid_excess_power_last_3_average') | float(0) %}
-          {% set voltage = 230 %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
+          {% set voltage = v_l1 if v_l1 > 100 else 230 %}
           {% set min_amps = 6 %}
           {% set max_amps = 16 %}
           {% if excess_power > 0 %}
@@ -89,13 +84,22 @@ template:
             0
           {% endif %}
 
-      # Calculate available charging amps for THREE PHASE
+      # Calculate available charging amps for THREE PHASE.
+      # Uses the SUM of the three live Peblar phase voltages instead of a
+      # hardcoded 690 V. For 3-phase power P = sum(V_phase) × I (per phase
+      # current), so summing the three measured phase voltages gives the
+      # effective divisor regardless of how balanced the phases are.
+      # Falls back to 690 V if any phase voltage sensor is unreachable.
       - name: "EV Available Charging Amps Three Phase"
         unique_id: ev_available_charging_amps_three_phase
         unit_of_measurement: "A"
         state: >
-          {% set excess_power = states('sensor.grid_excess_power_last_3_average') | float(0) %}
-          {% set voltage_3phase = 690 %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
+          {% set v_l2 = states('sensor.peblar_ev_charger_voltage_phase_2') | float(0) %}
+          {% set v_l3 = states('sensor.peblar_ev_charger_voltage_phase_3') | float(0) %}
+          {% set v_sum = v_l1 + v_l2 + v_l3 %}
+          {% set voltage_3phase = v_sum if v_sum > 300 else 690 %}
           {% set min_amps = 6 %}
           {% set max_amps = 16 %}
           {% if excess_power > 0 %}
@@ -112,15 +116,15 @@ template:
       # Determine optimal phase mode
       - name: "EV Optimal Charging Phase Mode"
         unique_id: ev_optimal_charging_phase_mode
-          #  {% set excess = states('sensor.grid_excess_power') | float(0) %}
+          #  {% set excess = states('sensor.ev_grid_excess_power') | float(0) %}
         state: >
-          {% set excess = states('sensor.grid_excess_power_last_3_average') | float(0) %}
+          {% set excess = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
           {% set single_phase_amps = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
           {% set three_phase_amps = states('sensor.ev_available_charging_amps_three_phase') | int(0) %}
           {% set current_mode = states('switch.peblar_ev_charger_force_single_phase') %}
-          {% set switch_to_3phase_threshold = 4800 %}
-          {% set switch_to_1phase_threshold = 3500 %}
-          {% set min_charge_threshold = 1380 %}
+          {% set switch_to_3phase_threshold = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(4800) %}
+          {% set switch_to_1phase_threshold = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(3500) %}
+          {% set min_charge_threshold = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) %}
           {% if excess < min_charge_threshold %}
             stop
           {% elif excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
@@ -152,20 +156,20 @@ automation:
       - trigger: state
         entity_id: sensor.ev_optimal_charging_phase_mode
         to: "stop"
-        for: "00:00:20" # for testing
-        # for: "00:02:00"
+        for: "00:02:00"
+        # for: "00:00:20" # for testing
         id: ev_stop
       - trigger: state
         entity_id: sensor.ev_optimal_charging_phase_mode
         to: "single_phase"
-        for: "00:00:30" # for testing
-        # for: "00:02:00" # was 3 but feels slow?
+        for: "00:02:00" # was 3 but feels slow?
+        # for: "00:00:30" # for testing
         id: ev_1p
       - trigger: state
         entity_id: sensor.ev_optimal_charging_phase_mode
         to: "three_phase"
-        for: "00:00:50" # for testing
-        # for: "00:04:00"  # was 5 but feels slow?
+        for: "00:04:00" # was 5 but feels slow?
+        # for: "00:00:50" # for testing
         id: ev_3p
     conditions: # some disabled for testing?
       - condition: state
@@ -232,7 +236,7 @@ automation:
       - trigger: time_pattern
         seconds: "/3"
       # - trigger: state # is probably every second? too much ?
-      #   entity_id: sensor.grid_excess_power_last_3_average
+      #   entity_id: sensor.ev_grid_excess_power_last_3_average
     conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override

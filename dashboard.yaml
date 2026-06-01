@@ -1,6 +1,127 @@
 views:
   - title: EV Solar Charging
     cards:
+      # ── Red banner: charger warnings or errors active ────────────────────────
+      - type: markdown
+        content: >-
+          {%- set ns = namespace(w=[], e=[]) -%}
+          {%- for i in [1,2,3,4,5] -%}
+          {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
+          {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
+          {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
+          {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
+          {%- endfor -%}
+          <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
+          {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
+          {% if ns.w %}Warnings: <strong>{{ ns.w | join(', ') }}</strong>{% endif %}</ha-alert>
+        visibility:
+          - condition: or
+            conditions:
+              - condition: state
+                entity: binary_sensor.peblar_ev_charger_active_warnings
+                state: "on"
+              - condition: state
+                entity: binary_sensor.peblar_ev_charger_active_errors
+                state: "on"
+      # ── Red banner: defaults not applied ────────────────────────────────────
+      # ev_power_buffer_watts == -7000 (the helper's min) is treated as the
+      # "user has never run apply_defaults" signal. After apply_defaults it
+      # becomes 0, and the banner + button hide.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="error"><strong>EV defaults not
+          applied</strong><br>The power buffer is at <strong>−7000 W</strong>,
+          which indicates the project's default values have not been applied
+          yet. Click the button below to run
+          <code>script.ev_apply_defaults</code> and set all helpers to sensible
+          starting values.</ha-alert>
+        visibility:
+          - condition: numeric_state
+            entity: input_number.ev_power_buffer_watts
+            below: -6999.5
+      - type: entities
+        show_header_toggle: false
+        state_color: false
+        entities:
+          - type: button
+            name: EV defaults
+            icon: mdi:tune-vertical
+            action_name: Apply
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.ev_apply_defaults
+              confirmation:
+                text: >-
+                  This will overwrite every user-configurable EV helper with
+                  the project's default values. Internal state (force-charge
+                  timeout) is preserved. Continue?
+        visibility:
+          - condition: numeric_state
+            entity: input_number.ev_power_buffer_watts
+            below: -6999.5
+      # ── Yellow banner: notify target invalid ───────────────────────────────
+      # Shown when binary_sensor.ev_notify_target_invalid is 'on'. Mirrors
+      # the persistent_notification.create from ev_validate_notify_target,
+      # but as a dashboard banner — more visible than the bell icon and
+      # immune to the modern-HA quirk where persistent notifications aren't
+      # exposed as state entities.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="warning"><strong>EV notify action not
+          configured</strong><br>The <code>input_text.ev_notify_entity_id</code>
+          helper is empty, malformed, or points to a target that doesn't
+          exist. EV notifications fall back to HA persistent notifications
+          until you set a valid target under <strong>Advanced settings →
+          Notifications</strong>.<br><br>Current value:
+          <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
+          Detected notify entities:
+          <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') }}</code>
+          </ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_notify_target_invalid
+            state: "on"
+      # ── Yellow banner: phase-switch thresholds off recommendation ──────────
+      # Shown if ANY of the three solar thresholds isn't at its recommended
+      # value (4800 / 3500 / 1380). Lists current vs recommended inline.
+      - type: markdown
+        content: >-
+          {% set v3 = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(0) | int %}
+
+          {% set v1 = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(0) | int %}
+
+          {% set vmin = states('input_number.ev_solar_min_charge_threshold_w') | float(0) | int %}
+
+          <ha-alert alert-type="warning"><strong>Solar phase-switch thresholds
+          are not at recommended values</strong><br>
+          • Switch to 3-phase above: <strong>{{ v3 }} W</strong>{% if v3 != 4800 %} — recommended <strong>4800</strong>{% else %} ✓{% endif %}<br>
+          • Switch back to 1-phase below: <strong>{{ v1 }} W</strong>{% if v1 != 3500 %} — recommended <strong>3500</strong>{% else %} ✓{% endif %}<br>
+          • Stop charging below: <strong>{{ vmin }} W</strong>{% if vmin != 1380 %} — recommended <strong>1380</strong>{% else %} ✓{% endif %}<br>
+          <br>Adjust under <strong>Advanced settings</strong>, or run
+          <strong>Apply defaults</strong> to reset.</ha-alert>
+        visibility:
+          - condition: or
+            conditions:
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                below: 4800
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                above: 4800
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                below: 3500
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                above: 3500
+              - condition: numeric_state
+                entity: input_number.ev_solar_min_charge_threshold_w
+                below: 1380
+              - condition: numeric_state
+                entity: input_number.ev_solar_min_charge_threshold_w
+                above: 1380
       - type: entities
         title: EV Charging Settings
         entities:
@@ -77,11 +198,9 @@ views:
       - type: entities
         title: Power Management
         entities:
-          - entity: sensor.grid_excess_power
-            name: Excess Solar Power (Raw)
-          - entity: sensor.grid_excess_power_grid_only
-          - entity: sensor.grid_excess_power_last_2_average
-          - entity: sensor.grid_excess_power_last_3_average
+          - entity: sensor.ev_grid_excess_power
+            name: Excess Power (Raw)
+          - entity: sensor.ev_grid_excess_power_last_3_average
           - entity: sensor.ev_available_charging_amps_single_phase
             name: Available Amps (1-Phase)
           - entity: sensor.ev_available_charging_amps_three_phase
@@ -120,15 +239,83 @@ views:
           - entity: sensor.ev_debug_solar_values
             name: Solar debug info
           - type: attribute
-            name: Solar
-            entity: sensor.ev_debug_solar_values
-            attribute: solar
-          - type: attribute
             name: Excess
             entity: sensor.ev_debug_solar_values
             attribute: excess
           - entity: sensor.ev_charging_debug_info
             name: EV charging debug info
+  - title: Advanced settings
+    path: advanced-settings
+    icon: mdi:tune
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Notifications
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.ev_notifications_enabled
+                name: Enable notifications
+              - type: divider
+              - entity: input_text.ev_notify_entity_id
+                name: Notify action
+              - entity: binary_sensor.ev_notify_target_invalid
+                name: Validation
+                icon: mdi:check-decagram
+          - type: markdown
+            content: >-
+              Enter the full action name your phone uses, e.g.
+              `notify.mobile_app_dennis_mobile` or the entity form
+              `notify.dennis_mobile`. Leave empty to fall back to a persistent
+              HA notification. The Validation row above flips to "Detected"
+              when the value is empty, malformed, or points to a target that
+              doesn't exist.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Solar — phase-switch thresholds
+            entities:
+              - entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                name: Switch to 3-phase above (W)
+              - entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                name: Switch back to 1-phase below (W)
+              - entity: input_number.ev_solar_min_charge_threshold_w
+                name: Stop charging below (W)
+              - type: divider
+              - type: button
+                name: Reset thresholds to recommended
+                icon: mdi:tune-vertical
+                action_name: Apply
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.ev_apply_threshold_defaults
+                  confirmation:
+                    text: >-
+                      Reset the three solar phase-switch thresholds to 4800 W /
+                      3500 W / 1380 W. Other settings are not affected. Continue?
+          - type: markdown
+            content: >-
+              Three-phase minimum is ~4140 W (6 A × 690 V); single-phase
+              minimum is ~1380 W (6 A × 230 V). Below the **stop charging**
+              threshold the controller pauses entirely.
+      - type: entities
+        title: Reset
+        entities:
+          - entity: script.ev_apply_defaults
+            name: Apply defaults
+            secondary_info: last-triggered
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.ev_apply_defaults
+              confirmation:
+                text: >-
+                  This will overwrite every user-configurable EV helper with
+                  the project's default values. Internal state (force-charge
+                  timeout) is preserved. Continue?
   - title: Elroq
     sections:
       - type: grid
@@ -291,3 +478,94 @@ views:
       - type: entities
         entities:
           - sensor.frank_energie_gasprices_current_gas_price_all_in
+  - title: Peblar Modbus
+    path: peblar-modbus
+    icon: mdi:ethernet
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: Per-phase power (modbus-only)
+            entities:
+              - sensor.peblar_ev_charger_power_phase_1
+              - sensor.peblar_ev_charger_power_phase_2
+              - sensor.peblar_ev_charger_power_phase_3
+          - type: entities
+            title: Charge limit detail
+            entities:
+              - entity: sensor.peblar_ev_charger_charge_current_limit_actual
+                name: Effective limit (all sources)
+              - entity: sensor.peblar_ev_charger_charge_current_limit_raw
+                name: Modbus setpoint (reg 40000)
+              - entity: sensor.peblar_ev_charger_lock_state
+                name: Lock state
+              - entity: sensor.peblar_ev_charger_cp_state_raw
+                name: CP state raw (ASCII)
+              - entity: sensor.peblar_ev_charger_fallback_current_raw
+                name: Fallback current
+          - type: entities
+            title: Errors & Warnings
+            entities:
+              - binary_sensor.peblar_ev_charger_active_errors
+              - binary_sensor.peblar_ev_charger_active_warnings
+              - type: divider
+              - entity: sensor.peblar_ev_charger_active_error_1
+                name: Error 1
+              - entity: sensor.peblar_ev_charger_active_error_2
+                name: Error 2
+              - entity: sensor.peblar_ev_charger_active_error_3
+                name: Error 3
+              - entity: sensor.peblar_ev_charger_active_error_4
+                name: Error 4
+              - entity: sensor.peblar_ev_charger_active_error_5
+                name: Error 5
+              - type: divider
+              - entity: sensor.peblar_ev_charger_active_warning_1
+                name: Warning 1
+              - entity: sensor.peblar_ev_charger_active_warning_2
+                name: Warning 2
+              - entity: sensor.peblar_ev_charger_active_warning_3
+                name: Warning 3
+              - entity: sensor.peblar_ev_charger_active_warning_4
+                name: Warning 4
+              - entity: sensor.peblar_ev_charger_active_warning_5
+                name: Warning 5
+          - type: entities
+            title: Modbus controls
+            entities:
+              - entity: input_number.peblar_ev_charger_charge_limit_desired
+                name: Desired charge limit
+              - entity: number.peblar_ev_charger_charge_current_limit_ma
+                name: Raw setpoint (mA, reg 40000)
+              - entity: number.peblar_ev_charger_fallback_current
+                name: Fallback current setpoint
+              - entity: number.peblar_ev_charger_alive_timeout
+                name: Alive timeout setpoint
+          - type: entities
+            title: Device info
+            entities:
+              - entity: sensor.peblar_ev_charger_product_sn
+                name: Serial number
+              - entity: sensor.peblar_ev_charger_product_pn
+                name: Part number
+              - entity: sensor.peblar_ev_charger_firmware_version
+                name: Firmware version
+              - entity: sensor.peblar_ev_charger_hardware_identifier
+                name: Hardware identifier
+              - entity: sensor.peblar_ev_charger_phase_count
+                name: Phase count
+              - entity: sensor.peblar_ev_charger_independent_relays
+                name: Independent relays
+              - entity: sensor.peblar_ev_charger_modbus_api_version_major
+                name: Modbus API version (major)
+              - entity: sensor.peblar_ev_charger_modbus_api_version_minor
+                name: Modbus API version (minor)
+          - type: entities
+            title: Connectivity
+            entities:
+              - entity: sensor.peblar_ev_charger_wlan_signal_strength
+                name: WLAN signal
+              - entity: sensor.peblar_ev_charger_cellular_signal_strength
+                name: Cellular signal
+              - entity: sensor.peblar_ev_charger_uptime
+                name: Uptime (s)
