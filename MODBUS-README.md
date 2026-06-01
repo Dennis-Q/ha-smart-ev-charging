@@ -50,9 +50,9 @@ exact available power without rounding to whole amps.
 ## Installation
 
 1. **Remove the official Peblar REST integration** from
-   Settings → Devices & Services. After removal, go to the Peblar device page
-   and delete any `peblar_ev_charger_*` entities that remain in an unavailable
-   state.
+   Settings → Devices & Services. After removal, check for leftover entities
+   in Developer Tools → States — filter on `peblar_ev_charger` and delete any
+   that are still listed with state `unavailable`.
 
 2. **Copy** `packages/ev_peblar_modbus.yaml.template` to your `/config/packages/`
    directory, rename it to `ev_peblar_modbus.yaml`, and set the `host:` value
