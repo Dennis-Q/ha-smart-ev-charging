@@ -29,19 +29,17 @@ sensor:
 template:
   - sensor:
       # Calculate available grid export power for EV charging (derived from P1 meter).
-      # Auto-scales from kW → W when the P1 integration reports in kW instead of W
-      # (common with some DSMR integrations). See binary_sensor.ev_p1_unit_mismatch
-      # for a warning that turns ON when the unit is not the expected W.
+      # Expects sensor.electricity_meter_power_consumption and _production in W.
+      # See binary_sensor.ev_p1_unit_mismatch — it turns ON when either sensor
+      # reports a unit other than W, which will produce wrong results here.
       - name: "EV Grid Excess Power"
         unique_id: ev_grid_excess_power
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
         state: >
-          {% set unit_import = state_attr('sensor.electricity_meter_power_consumption', 'unit_of_measurement') or 'W' %}
-          {% set unit_export = state_attr('sensor.electricity_meter_power_production', 'unit_of_measurement') or 'W' %}
-          {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) * (1000 if unit_import == 'kW' else 1) %}
-          {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) * (1000 if unit_export == 'kW' else 1) %}
+          {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
+          {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
           {% set charger_power = states('sensor.peblar_ev_charger_power') | float(500) %}
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set current_power = grid_export - grid_import %}

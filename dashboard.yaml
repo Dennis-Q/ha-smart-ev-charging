@@ -130,12 +130,12 @@ views:
         content: >-
           <ha-alert alert-type="warning"><strong>P1 sensor unit
           mismatch</strong><br>One or both P1 power sensors are not reporting
-          in <strong>W</strong>. The solar excess calculation expects watts.<br>
+          in <strong>W</strong>. The solar excess calculation expects watts —
+          a different unit will produce wrong results.<br>
           • Consumption: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_consumption') }}</strong><br>
           • Production: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_production') }}</strong><br><br>
-          If your P1 integration reports in <strong>kW</strong>, the calculation
-          auto-scales — solar charging will work correctly. For any other unit,
-          check your P1 meter integration configuration.</ha-alert>
+          Check your P1 meter integration and make sure it exposes power in
+          <strong>W</strong>.</ha-alert>
         visibility:
           - condition: state
             entity: binary_sensor.ev_p1_unit_mismatch
