@@ -891,5 +891,7 @@ recorder:
       - sensor.ev_grid_excess_power
       - sensor.ev_available_charging_amps_single_phase
       - sensor.ev_available_charging_amps_three_phase
+      - sensor.ev_available_charging_ma_single_phase
+      - sensor.ev_available_charging_ma_three_phase
       - sensor.ev_debug_solar_values
       - sensor.ev_charging_debug_info

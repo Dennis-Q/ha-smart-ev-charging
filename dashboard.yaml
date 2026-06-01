@@ -219,19 +219,31 @@ views:
           - entity: sensor.ev_grid_excess_power
             name: Excess Power (Raw)
           - entity: sensor.ev_grid_excess_power_last_3_average
-          - entity: sensor.ev_available_charging_amps_single_phase
-            name: Available Amps (1-Phase)
-          - entity: sensor.ev_available_charging_amps_three_phase
-            name: Available Amps (3-Phase)
           - entity: sensor.ev_optimal_charging_phase_mode
             name: Optimal Phase Mode
+          - type: divider
+          - entity: sensor.ev_available_charging_amps_single_phase
+            name: Available Amps (1-Phase)
+          - entity: sensor.ev_available_charging_ma_single_phase
+            name: Available mA (1-Phase, calculated)
+          - entity: sensor.ev_available_charging_amps_three_phase
+            name: Available Amps (3-Phase)
+          - entity: sensor.ev_available_charging_ma_three_phase
+            name: Available mA (3-Phase, calculated)
+          - type: divider
+          - entity: sensor.peblar_ev_charger_charge_current_limit_raw
+            name: Setpoint sent (mA, reg 40000)
+          - entity: sensor.peblar_ev_charger_charge_current_limit_actual
+            name: Effective limit (mA, reg 30113)
       - type: entities
         title: Charge Control
         entities:
           - entity: switch.peblar_ev_charger_force_single_phase
             name: Single Phase Mode
+          - entity: number.peblar_ev_charger_charge_current_limit_ma
+            name: Charger Limit (mA — solar control)
           - entity: number.peblar_ev_charger_charge_limit
-            name: Charger Current Limit (A)
+            name: Charger Limit (A — manual / display)
           - entity: switch.peblar_ev_charger_charge
             name: Peblar Charger On/Off
           - type: divider
@@ -380,7 +392,7 @@ views:
           - type: tile
             entity: switch.peblar_ev_charger_force_single_phase
           - type: tile
-            entity: number.peblar_ev_charger_charge_limit
+            entity: number.peblar_ev_charger_charge_current_limit_ma
           - type: tile
             entity: switch.peblar_ev_charger_charge
           - type: tile
