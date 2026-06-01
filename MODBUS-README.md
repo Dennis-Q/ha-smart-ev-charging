@@ -54,31 +54,36 @@ exact available power without rounding to whole amps.
    in Developer Tools → States — filter on `peblar` and delete any
    that are still listed with state `unavailable`.
 
-2. **Install the Modbus package.** Two options:
+2. **Add your charger's IP/hostname to `secrets.yaml`** (one-time, never needs
+   changing again):
+
+   ```yaml
+   peblar_host: 192.168.1.x   # your Peblar charger's IP address or hostname
+   ```
+
+3. **Install the Modbus package.** Two options:
 
    **Option A — via `install.sh`** (recommended if you used it to install the
-   project): re-run the installer and it will download the latest template to
-   `/config/packages/ev_peblar_modbus.yaml.template` and print the steps to
-   activate it.
+   project): re-run the installer and it will print the activation steps.
 
    ```sh
    bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/install.sh)
    ```
 
-   **Option B — manually**: copy the template and rename it:
+   **Option B — manually**: copy the template:
 
    ```sh
    cp /config/packages/ev_peblar_modbus.yaml.template \
       /config/packages/ev_peblar_modbus.yaml
    ```
 
-   Either way, open `/config/packages/ev_peblar_modbus.yaml` and set the
-   `host:` value at the top to your charger's IP address or hostname.
+   The `host:` in this file reads from `secrets.yaml` via `!secret peblar_host`
+   — no further editing of the yaml file is needed.
 
-3. Do a **full HA restart** (not just reload) — the Modbus hub only
+5. Do a **full HA restart** (not just reload) — the Modbus hub only
    initialises at startup.
 
-4. Verify entities appear in Developer Tools → States under the
+6. Verify entities appear in Developer Tools → States under the
    `peblar_ev_charger_*` namespace.
 
 ---

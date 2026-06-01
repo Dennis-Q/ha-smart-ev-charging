@@ -1,12 +1,13 @@
 # Peblar Modbus TCP integration for Home Assistant
 # Requires Peblar firmware >= 1.6 with Modbus API enabled.
 #
-# Before use: set the host below to your Peblar charger's IP address or hostname.
+# Before use: add this line to your secrets.yaml:
+#   peblar_host: 192.168.1.x    # your Peblar charger's IP address or hostname
 
 modbus:
   - name: peblar
     type: tcp
-    host: 192.168.1.xxx  # <-- set this to your Peblar charger's IP address or hostname
+    host: !secret peblar_host
     port: 502
     delay: 1
     message_wait_milliseconds: 35
