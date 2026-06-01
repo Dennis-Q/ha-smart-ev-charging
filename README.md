@@ -12,25 +12,19 @@ Needs work for public use, but might be done later.
 Probably incomplete but it's a start:
 - Solar integration (for solar charging, entities that show current power-use)
 - P1-meter (preferably with quick updates)
-- EV-charger Peblar and active integration (official via restAPI)
+- Peblar EV charger with **Modbus TCP enabled** (see below)
 - Entso-e integration (and in Dashboard also Frank Energie)
 
-### Peblar entities to enable
+### Enabling Modbus on the Peblar charger
 
-The Peblar integration ships these entities **disabled by default** — enable
-them in *Settings → Devices & Services → Peblar → Entities*:
+This project controls the Peblar via Modbus TCP instead of the official REST
+integration, which gives milliamp-precision current control (1 mA steps instead
+of whole amps). Before installing, enable Modbus on the charger:
 
-- `sensor.peblar_ev_charger_voltage_phase_1`
-- `sensor.peblar_ev_charger_voltage_phase_2`
-- `sensor.peblar_ev_charger_voltage_phase_3`
+1. Open the Peblar web interface (browse to its IP address on your LAN).
+2. Go to **Settings → Connectivity → Modbus API** and enable it.
+3. Note the charger's IP address or hostname — you will need it during setup.
 
-The charging-amps templates use the live phase voltages when available
-(falling back to 230 V / 690 V if the sensors are missing or unreachable),
-which gives slightly more accurate amp targets than a hardcoded 230 V — your
-mains will typically be 220–245 V, and individual phases can differ by several
-volts.
-
-Enabling these is also useful for diagnostics:
-
-- `sensor.peblar_ev_charger_current_phase_1/2/3` — confirms which phase the
-  car is actually drawing from when the charger is in single-phase mode
+See `MODBUS-README.md` for the full installation procedure, including the
+required order of steps (remove the official REST integration first, then
+install and configure the Modbus package).
