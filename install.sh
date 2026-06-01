@@ -161,6 +161,41 @@ ok "lovelace/ev_dashboard.yaml"
 
 echo ""
 
+# ── Peblar Modbus integration (optional) ──────────────────────────────────────
+# The template is always downloaded (useful as an up-to-date reference).
+# The installed .yaml file is only created once — the user edits it to set
+# their charger's IP/hostname, so we must never overwrite it on updates.
+
+MODBUS_TEMPLATE="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml.template"
+MODBUS_TARGET="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"
+MODBUS_PLACEHOLDER="192.168.1.xxx"
+MODBUS_NEEDS_HOST=false
+
+echo "Peblar Modbus integration:"
+
+download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TEMPLATE"
+ok "packages/ev_peblar_modbus.yaml.template  (reference template — updated)"
+
+if [ ! -f "$MODBUS_TARGET" ]; then
+    cp "$MODBUS_TEMPLATE" "$MODBUS_TARGET"
+    ok "packages/ev_peblar_modbus.yaml  (installed from template)"
+    MODBUS_NEEDS_HOST=true
+else
+    ok "packages/ev_peblar_modbus.yaml  (already exists — not overwritten)"
+    if grep -q "$MODBUS_PLACEHOLDER" "$MODBUS_TARGET" 2>/dev/null; then
+        MODBUS_NEEDS_HOST=true
+    fi
+fi
+
+if [ "$MODBUS_NEEDS_HOST" = true ]; then
+    echo ""
+    warn "packages/ev_peblar_modbus.yaml still has the placeholder host '${MODBUS_PLACEHOLDER}'."
+    warn "Edit that file and replace host: with your Peblar charger's IP address"
+    warn "or hostname, then do a full HA restart (not just a reload)."
+fi
+
+echo ""
+
 # ── configuration.yaml checks ─────────────────────────────────────────────────
 
 CONF="${CONFIG_DIR}/configuration.yaml"
@@ -193,19 +228,26 @@ fi
 hr
 echo "  Done! Next steps:"
 echo ""
+STEP=1
 if [ "$NEEDS_ACTION" = true ]; then
-    echo "  1. Update configuration.yaml (see warnings above)"
-    echo "  2. Make sure required integrations are installed and configured"
-    echo "     (Peblar, your EV brand, Frank Energie / Entso-e, ...)"
-    echo "  3. Restart Home Assistant"
-    echo "  4. Run script.ev_apply_defaults from Developer Tools → Services"
-    echo "     to set sensible starting values for all EV helpers"
-    echo "  5. Open the EV Charging dashboard and configure to taste"
-else
-    echo "  1. Make sure required integrations are present (Peblar, EV brand, ...)"
-    echo "  2. Reload YAML or restart Home Assistant"
-    echo "  3. Run script.ev_apply_defaults once after a fresh install"
+    echo "  ${STEP}. Update configuration.yaml (see warnings above)"
+    STEP=$((STEP+1))
 fi
+if [ "$MODBUS_NEEDS_HOST" = true ]; then
+    echo "  ${STEP}. Set host: in packages/ev_peblar_modbus.yaml to your Peblar charger's"
+    echo "     IP address or hostname, then remove the official Peblar REST integration"
+    echo "     from Settings → Devices & Services before restarting."
+    STEP=$((STEP+1))
+fi
+echo "  ${STEP}. Make sure required integrations are installed and configured"
+echo "     (your EV brand, Frank Energie / Entso-e, P1 meter, ...)"
+STEP=$((STEP+1))
+echo "  ${STEP}. Restart Home Assistant (full restart — not just a reload)"
+STEP=$((STEP+1))
+echo "  ${STEP}. Run script.ev_apply_defaults from Developer Tools → Services"
+echo "     to set sensible starting values for all EV helpers"
+STEP=$((STEP+1))
+echo "  ${STEP}. Open the EV Charging dashboard and configure to taste"
 echo ""
 hr
 echo ""
