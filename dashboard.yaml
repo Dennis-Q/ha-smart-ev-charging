@@ -218,7 +218,7 @@ views:
         entities:
           - entity: sensor.ev_grid_excess_power
             name: Excess Power (Raw)
-          - entity: sensor.ev_grid_excess_power_last_3_average
+          - entity: sensor.ev_grid_excess_power_smoothed
           - entity: sensor.ev_optimal_charging_phase_mode
             name: Optimal Phase Mode
           - type: divider

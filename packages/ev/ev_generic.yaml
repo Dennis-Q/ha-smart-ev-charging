@@ -880,7 +880,7 @@ automation:
 # /config/packages/hba_helpers.yaml; HA merges both at load time.
 #
 # What's intentionally kept:
-#   - sensor.ev_grid_excess_power_last_3_average: smoothed signal that actually
+#   - sensor.ev_grid_excess_power_smoothed: smoothed signal that actually
 #     drives the phase-switch decision; useful for retrospective analysis
 #   - sensor.ev_optimal_charging_phase_mode: low-cardinality decision output
 #     (stop / single_phase / three_phase); transitions only

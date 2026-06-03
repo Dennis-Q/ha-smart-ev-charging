@@ -20,8 +20,8 @@ input_number:
 
 sensor:
   - platform: statistics
-    name: "EV Grid Excess Power Median 5"
-    unique_id: ev_grid_excess_power_last_3_average
+    name: "EV Grid Excess Power Smoothed"
+    unique_id: ev_grid_excess_power_smoothed
     entity_id: sensor.ev_grid_excess_power
     state_characteristic: median
     sampling_size: 5
@@ -71,7 +71,7 @@ template:
         unique_id: ev_available_charging_amps_single_phase
         unit_of_measurement: "A"
         state: >
-          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
           {% set voltage = v_l1 if v_l1 > 100 else 230 %}
           {% set min_amps = 6 %}
@@ -97,7 +97,7 @@ template:
         unique_id: ev_available_charging_amps_three_phase
         unit_of_measurement: "A"
         state: >
-          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
           {% set v_l2 = states('sensor.peblar_ev_charger_voltage_phase_2') | float(0) %}
           {% set v_l3 = states('sensor.peblar_ev_charger_voltage_phase_3') | float(0) %}
@@ -126,7 +126,7 @@ template:
         unique_id: ev_available_charging_ma_single_phase
         unit_of_measurement: "mA"
         state: >
-          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
           {% set voltage = v_l1 if v_l1 > 100 else 230 %}
           {% set min_ma = 6000 %}
@@ -148,7 +148,7 @@ template:
         unique_id: ev_available_charging_ma_three_phase
         unit_of_measurement: "mA"
         state: >
-          {% set excess_power = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set excess_power = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set v_l1 = states('sensor.peblar_ev_charger_voltage_phase_1') | float(0) %}
           {% set v_l2 = states('sensor.peblar_ev_charger_voltage_phase_2') | float(0) %}
           {% set v_l3 = states('sensor.peblar_ev_charger_voltage_phase_3') | float(0) %}
@@ -172,7 +172,7 @@ template:
         unique_id: ev_optimal_charging_phase_mode
           #  {% set excess = states('sensor.ev_grid_excess_power') | float(0) %}
         state: >
-          {% set excess = states('sensor.ev_grid_excess_power_last_3_average') | float(0) %}
+          {% set excess = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set single_phase_amps = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
           {% set three_phase_amps = states('sensor.ev_available_charging_amps_three_phase') | int(0) %}
           {% set current_mode = states('switch.peblar_ev_charger_force_single_phase') %}
@@ -306,7 +306,7 @@ automation:
       - trigger: time_pattern
         seconds: "/3"
       # - trigger: state # is probably every second? too much ?
-      #   entity_id: sensor.ev_grid_excess_power_last_3_average
+      #   entity_id: sensor.ev_grid_excess_power_smoothed
     conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
