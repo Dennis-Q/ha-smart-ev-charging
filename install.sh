@@ -139,9 +139,51 @@ if [ ${#LEGACY_FILES[@]} -gt 0 ]; then
     exit 1
 fi
 
+# ── Migration: old-location EV files ─────────────────────────────────────────
+# Before v0.4, EV files lived directly in packages/. They now live in
+# packages/ev/. If both locations exist HA loads them twice — duplicate
+# entity definitions cause YAML to silently drop one block.
+
+shopt -s nullglob
+OLD_EV=(
+    "${CONFIG_DIR}"/packages/ev_generic.yaml
+    "${CONFIG_DIR}"/packages/ev_solar.yaml
+    "${CONFIG_DIR}"/packages/ev_window.yaml
+    "${CONFIG_DIR}"/packages/ev_peblar_modbus.yaml
+)
+shopt -u nullglob
+
+if [ ${#OLD_EV[@]} -gt 0 ]; then
+    warn "Old-location EV files found directly in packages/:"
+    echo ""
+    for _f in "${OLD_EV[@]}"; do
+        say "  $_f"
+    done
+    echo ""
+    warn "These will clash with packages/ev/ (HA loads both → duplicate entities)."
+    echo ""
+    if ask "Move them to packages/ev/ now?"; then
+        for _f in "${OLD_EV[@]}"; do
+            _name=$(basename "$_f")
+            _dst="${CONFIG_DIR}/packages/ev/${_name}"
+            if [ -f "$_dst" ]; then
+                rm "$_f"
+                say "  removed old ${_name} (already exists at packages/ev/)"
+            else
+                mv "$_f" "$_dst"
+                say "  moved: ${_name} → packages/ev/"
+            fi
+        done
+        ok "Migration complete."
+    else
+        warn "Skipped — HA will load files from both locations. Re-run to fix."
+    fi
+    echo ""
+fi
+
 # ── Create directories ────────────────────────────────────────────────────────
 
-mkdir -p "${CONFIG_DIR}/packages"
+mkdir -p "${CONFIG_DIR}/packages/ev"
 mkdir -p "${CONFIG_DIR}/lovelace"
 
 # ── Core EV files — always overwrite ─────────────────────────────────────────
@@ -151,9 +193,9 @@ mkdir -p "${CONFIG_DIR}/lovelace"
 echo "Core files:"
 
 CORE_FILES=(
-    packages/ev_generic.yaml
-    packages/ev_solar.yaml
-    packages/ev_window.yaml
+    packages/ev/ev_generic.yaml
+    packages/ev/ev_solar.yaml
+    packages/ev/ev_window.yaml
 )
 
 for f in "${CORE_FILES[@]}"; do
@@ -166,8 +208,8 @@ download "dashboard.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard.yaml"
 ok "lovelace/ev_dashboard.yaml"
 
 # Record installed version (hidden file — not loaded by HA)
-echo "$RELEASE_VERSION" > "${CONFIG_DIR}/packages/.ev_charging_version"
-ok "packages/.ev_charging_version  (${RELEASE_VERSION})"
+echo "$RELEASE_VERSION" > "${CONFIG_DIR}/packages/ev/.ev_charging_version"
+ok "packages/ev/.ev_charging_version  (${RELEASE_VERSION})"
 
 echo ""
 
@@ -178,7 +220,7 @@ echo ""
 # already removed before we create the file, otherwise both integrations
 # fight for control and the Peblar applies the lowest limit (0 mA = no charging).
 
-MODBUS_TARGET="${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"
+MODBUS_TARGET="${CONFIG_DIR}/packages/ev/ev_peblar_modbus.yaml"
 MODBUS_NOT_INSTALLED=false
 MODBUS_JUST_CREATED=false
 MODBUS_SECRET_MISSING=false
@@ -198,8 +240,8 @@ if [ ! -f "$MODBUS_TARGET" ]; then
             say "    peblar_host: 192.168.1.x   # your Peblar charger's IP or hostname"
             warn "Then re-run this installer to complete Modbus activation."
         else
-            download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
-            ok "packages/ev_peblar_modbus.yaml  (created)"
+            download "packages/ev/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
+            ok "packages/ev/ev_peblar_modbus.yaml  (created)"
             MODBUS_JUST_CREATED=true
         fi
     else
@@ -207,8 +249,8 @@ if [ ! -f "$MODBUS_TARGET" ]; then
         info "Skipped. See next steps below for the full activation procedure."
     fi
 else
-    download "packages/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
-    ok "packages/ev_peblar_modbus.yaml  (updated)"
+    download "packages/ev/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
+    ok "packages/ev/ev_peblar_modbus.yaml  (updated)"
     if ! grep -q "^peblar_host:" "${CONFIG_DIR}/secrets.yaml" 2>/dev/null; then
         MODBUS_SECRET_MISSING=true
         warn "secrets.yaml does not contain 'peblar_host'. Add:"
