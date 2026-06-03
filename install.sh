@@ -240,7 +240,7 @@ if [ ! -f "$MODBUS_TARGET" ]; then
             say "    peblar_host: 192.168.1.x   # your Peblar charger's IP or hostname"
             warn "Then re-run this installer to complete Modbus activation."
         else
-            download "packages/ev/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
+            download "packages/ev/ev_peblar_modbus.yaml" "$MODBUS_TARGET"
             ok "packages/ev/ev_peblar_modbus.yaml  (created)"
             MODBUS_JUST_CREATED=true
         fi
@@ -249,7 +249,7 @@ if [ ! -f "$MODBUS_TARGET" ]; then
         info "Skipped. See next steps below for the full activation procedure."
     fi
 else
-    download "packages/ev/ev_peblar_modbus.yaml.template" "$MODBUS_TARGET"
+    download "packages/ev/ev_peblar_modbus.yaml" "$MODBUS_TARGET"
     ok "packages/ev/ev_peblar_modbus.yaml  (updated)"
     if ! grep -q "^peblar_host:" "${CONFIG_DIR}/secrets.yaml" 2>/dev/null; then
         MODBUS_SECRET_MISSING=true

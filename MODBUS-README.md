@@ -1,9 +1,9 @@
-# Peblar Modbus integration (`ev_peblar_modbus.yaml.template`)
+# Peblar Modbus integration (`ev_peblar_modbus.yaml`)
 
-`packages/ev/ev_peblar_modbus.yaml.template` is the template for a drop-in
-replacement of the official Peblar Home Assistant REST integration. Copy it to
-your `/config/packages/ev/` directory, rename it to `ev_peblar_modbus.yaml`, and
-set your charger's IP address. It controls the charger over Modbus TCP instead
+`packages/ev/ev_peblar_modbus.yaml` is a drop-in replacement of the official
+Peblar Home Assistant REST integration. Install it via `install.sh` (recommended)
+or copy it to your `/config/packages/ev/` directory. It controls the charger over
+Modbus TCP instead
 of the REST API, which unlocks **milliamp-precision current control** — the
 main reason to use this instead of the official integration.
 
@@ -70,11 +70,12 @@ exact available power without rounding to whole amps.
    bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/install.sh)
    ```
 
-   **Option B — manually**: copy the template:
+   **Option B — manually**: download the file:
 
    ```sh
-   cp /config/packages/ev/ev_peblar_modbus.yaml.template \
-      /config/packages/ev/ev_peblar_modbus.yaml
+   mkdir -p /config/packages/ev
+   curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/packages/ev/ev_peblar_modbus.yaml \
+        -o /config/packages/ev/ev_peblar_modbus.yaml
    ```
 
    The `host:` in this file reads from `secrets.yaml` via `!secret peblar_host`
