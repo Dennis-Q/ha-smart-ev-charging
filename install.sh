@@ -144,14 +144,14 @@ fi
 # packages/ev/. If both locations exist HA loads them twice — duplicate
 # entity definitions cause YAML to silently drop one block.
 
-shopt -s nullglob
-OLD_EV=(
-    "${CONFIG_DIR}"/packages/ev_generic.yaml
-    "${CONFIG_DIR}"/packages/ev_solar.yaml
-    "${CONFIG_DIR}"/packages/ev_window.yaml
-    "${CONFIG_DIR}"/packages/ev_peblar_modbus.yaml
-)
-shopt -u nullglob
+OLD_EV=()
+for _candidate in \
+    "${CONFIG_DIR}/packages/ev_generic.yaml" \
+    "${CONFIG_DIR}/packages/ev_solar.yaml" \
+    "${CONFIG_DIR}/packages/ev_window.yaml" \
+    "${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"; do
+    [ -f "$_candidate" ] && OLD_EV+=("$_candidate")
+done
 
 if [ ${#OLD_EV[@]} -gt 0 ]; then
     warn "Old-location EV files found directly in packages/:"
