@@ -191,6 +191,46 @@ script:
         target: { entity_id: input_number.ev_solar_min_charge_threshold_w }
         data: { value: 1380 }
 
+  # Sends a notification to the configured legacy notify.* service,
+  # falling back to persistent_notification if the helper is empty.
+  ev_notify_dispatch:
+    alias: "EV: Notify dispatch"
+    fields:
+      title:
+        description: Notification title
+      message:
+        description: Notification body
+      tag:
+        default: ev_notification
+      color:
+        default: blue
+      priority:
+        default: normal
+    sequence:
+      - action: >-
+          {{ states('input_text.ev_notify_entity_id')
+             if states('input_text.ev_notify_entity_id') | trim
+                not in ['', 'unknown', 'unavailable']
+             else 'notify.persistent_notification' }}
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+          data:
+            priority: "{{ priority }}"
+            tag: "{{ tag }}"
+            color: "{{ color }}"
+
+  ev_notify_test:
+    alias: "EV: Send test notification"
+    sequence:
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV Charging — test notification"
+          message: "Notifications are working correctly. Target: {{ states('input_text.ev_notify_entity_id') }}"
+          tag: ev_notify_test
+          color: blue
+          priority: normal
+
 ## Templates & sensors
 
 template:
@@ -205,23 +245,10 @@ template:
 
         #
 
-      # 'on' when input_text.ev_notify_entity_id is empty, unknown, unavailable,
-      # malformed, or points to a notify target that doesn't exist.
-      #
-      # Detection strategy:
-      #   - Empty / unknown / unavailable / missing 'notify.' prefix → invalid
-      #   - If the value is the legacy mobile_app service form
-      #     ('notify.mobile_app_<device>'), derive the modern entity form
-      #     ('notify.<device>') and check it exists in states.notify.
-      #     Mobile_app integrations always register both a service and an
-      #     entity for the same device, so the presence of the entity is a
-      #     reliable proxy for service availability.
-      #   - Otherwise (entity form already): check states.notify directly.
-      #
-      # Trade-off: `notify.persistent_notification` will be flagged invalid
-      # because it is service-only. Users who want persistent notifications
-      # should leave the helper empty — the action falls back to
-      # notify.persistent_notification automatically.
+      # 'on' when input_text.ev_notify_entity_id is empty, malformed, or
+      # points to a modern notify entity. Any notify.* service that is NOT
+      # a registered notify entity is accepted as a legacy service call.
+      # Leave the helper empty to fall back to persistent_notification.
       - name: "EV Notify Target Invalid"
         unique_id: ev_notify_target_invalid
         device_class: problem
@@ -230,19 +257,20 @@ template:
           {%- set notify_entities = states.notify | map(attribute='entity_id') | list -%}
           {%- if v in ['', 'unknown', 'unavailable'] -%}
             true
-          {%- elif not v.startswith('notify.') or '.' not in v -%}
+          {%- elif not v.startswith('notify.') -%}
+            true
+          {%- elif v in notify_entities -%}
             true
           {%- else -%}
-            {%- set svc = v[7:] -%}
-            {%- if svc.startswith('mobile_app_') -%}
-              {{ ('notify.' ~ svc[11:]) not in notify_entities }}
-            {%- else -%}
-              {{ v not in notify_entities }}
-            {%- endif -%}
+            false
           {%- endif -%}
         attributes:
           notify_target: "{{ states('input_text.ev_notify_entity_id') }}"
-          available_notify_entities: "{{ states.notify | map(attribute='entity_id') | list }}"
+          available_notify_entities: >-
+            {{ states.notify
+               | map(attribute='entity_id')
+               | map('replace', 'notify.', 'notify.mobile_app_')
+               | list }}
   - sensor:
       # Determine expected charging limit
       # Ideas:
@@ -432,14 +460,13 @@ automation:
       - action: input_boolean.turn_off
         target:
           entity_id: input_boolean.ev_force_charge_once
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Force Charge Timeout"
           message: "Force charge once disabled after 8 hours"
-          data:
-            priority: high
-            tag: ev_force_timeout
-            color: orange
+          tag: ev_force_timeout
+          color: orange
+          priority: high
 
   # Auto-disable force charge (once) when full
   - id: "ev_force_charge_auto_disable_full"
@@ -456,14 +483,13 @@ automation:
       - action: input_boolean.turn_off
         target:
           entity_id: input_boolean.ev_force_charge_once
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Force Charge Complete (one-time)"
           message: "Car fully charged"
-          data:
-            priority: high
-            tag: ev_force_complete
-            color: green
+          tag: ev_force_complete
+          color: green
+          priority: high
 
   # Activate permanent force charging
   - id: "ev_force_charge_permanent_activate"
@@ -479,14 +505,13 @@ automation:
       - action: input_boolean.turn_off
         target:
           entity_id: input_boolean.ev_force_charge_once
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Permanent Force Charge Activated"
           message: "Permanent force charging enabled - One-time force charging disabled"
-          data:
-            priority: high
-            tag: ev_permanent_force_active
-            color: red
+          tag: ev_permanent_force_active
+          color: red
+          priority: high
 
   # Deactivate permanent force charging
   # Idea: also create one for manual override (with additional daily check?)
@@ -500,14 +525,13 @@ automation:
         entity_id: input_boolean.ev_force_charge_permanent
         to: "off"
     actions:
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Permanent Force Charge Deactivated"
           message: "Permanent force charging disabled - automations resumed but might not be enabled"
-          data:
-            priority: high
-            tag: ev_permanent_force_inactive
-            color: green
+          tag: ev_permanent_force_inactive
+          color: green
+          priority: high
 
   # Force charge activation - configure charger and optionally start charging
   - id: "ev_force_charge_override_enabled"
@@ -555,27 +579,25 @@ automation:
               - action: switch.turn_on
                 target:
                   entity_id: switch.skoda_elroq_charging
-              - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+              - action: script.ev_notify_dispatch
                 data:
                   title: "EV Force Charge Activated"
                   message: "Maximum charging at 3-phase 16A"
-                  data:
-                    priority: high
-                    tag: ev_force_active
-                    color: red
+                  tag: ev_force_active
+                  color: red
+                  priority: high
           - conditions:
               - condition: state
                 entity_id: binary_sensor.ev_is_connected
                 state: "off"
             sequence:
-              - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+              - action: script.ev_notify_dispatch
                 data:
                   title: "EV Force Charge - Cable Not Connected"
                   message: "Charger configured to 3-phase 16A. Please connect cable to start charging."
-                  data:
-                    priority: high
-                    tag: ev_force_cable_missing
-                    color: orange
+                  tag: ev_force_cable_missing
+                  color: orange
+                  priority: high
 
   # Validate charging limit
   # reduce triggers / API calls further
@@ -627,14 +649,13 @@ automation:
           entity_id: number.skoda_elroq_charge_limit
         data:
           value: "{{ expected_limit }}"
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Charging Limit Corrected"
           message: "Corrected from {{ current_limit }}% to {{ expected_limit }}%"
-          data:
-            priority: high
-            tag: ev_limit_corrected
-            color: yellow
+          tag: ev_limit_corrected
+          color: yellow
+          priority: high
 
   # Charging complete notification
   # Not much testing so far!
@@ -662,17 +683,16 @@ automation:
         entity_id: input_boolean.ev_force_charge_permanent
         state: "off"
     actions:
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Charging Complete"
           message: >-
             Your Elroq has reached the set charging limit of
             {{ states('sensor.ev_expected_charging_limit') }}%
             (current: {{ states('sensor.skoda_elroq_battery_percentage') }}%).
-          data:
-            priority: high
-            tag: ev_complete
-            color: green
+          tag: ev_complete
+          color: green
+          priority: high
 
   - id: ev_charger_error_notification
     alias: "EV Charger Error Notification"
@@ -690,14 +710,13 @@ automation:
         entity_id: input_boolean.ev_notifications_enabled
         state: "on"
     actions:
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Charger in unexpected state"
           message: "Peblar in state '{{ trigger.to_state.state }}'. Please check ASAP!"
-          data:
-            priority: high
-            tag: ev_charger_in_error
-            color: red
+          tag: ev_charger_in_error
+          color: red
+          priority: high
 
   - id: ev_generic_charging_mode_control
     alias: "EV Generic Charge Mode Control"
@@ -778,8 +797,6 @@ automation:
         state: "on"
     actions:
       - variables:
-          notify_target: >-
-            {{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}
           has_alert: >-
             {{ is_state('binary_sensor.peblar_ev_charger_active_warnings', 'on') or is_state('binary_sensor.peblar_ev_charger_active_errors', 'on') }}
           active_codes: >-
@@ -798,23 +815,21 @@ automation:
               - condition: template
                 value_template: "{{ has_alert }}"
             sequence:
-              - action: "{{ notify_target }}"
+              - action: script.ev_notify_dispatch
                 data:
                   title: "EV Charger Alert"
                   message: "Active: {{ active_codes }}. Check the charger web interface for details."
-                  data:
-                    priority: high
-                    tag: ev_charger_alert
-                    color: red
+                  tag: ev_charger_alert
+                  color: red
+                  priority: high
         default:
-          - action: "{{ notify_target }}"
+          - action: script.ev_notify_dispatch
             data:
               title: "EV Charger Alert Cleared"
               message: "All charger warnings and errors have been resolved."
-              data:
-                priority: normal
-                tag: ev_charger_alert
-                color: green
+              tag: ev_charger_alert
+              color: green
+              priority: normal
 
   # Notify when the charger is drawing power while the charge switch is off.
   # Catches cases where another control source (e.g. a stuck REST command) is
@@ -837,16 +852,15 @@ automation:
         entity_id: input_boolean.ev_notifications_enabled
         state: "on"
     actions:
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Unexpected Charging"
           message: >-
             Charger is drawing {{ states('sensor.peblar_ev_charger_power') }} W
             but the charge switch is off. Check for an unexpected control source.
-          data:
-            priority: high
-            tag: ev_unexpected_charging
-            color: orange
+          tag: ev_unexpected_charging
+          color: orange
+          priority: high
 
   # Remind when manual override has been left on for 4+ hours.
   # Manual override disables all EV automations — easy to forget.
@@ -865,14 +879,13 @@ automation:
         entity_id: input_boolean.ev_notifications_enabled
         state: "on"
     actions:
-      - action: "{{ states('input_text.ev_notify_entity_id') if states('input_text.ev_notify_entity_id') | trim not in ['', 'unknown', 'unavailable'] else 'notify.persistent_notification' }}"
+      - action: script.ev_notify_dispatch
         data:
           title: "EV Manual Override Still Active"
           message: "Manual override has been on for 4+ hours. All EV automations remain paused."
-          data:
-            priority: normal
-            tag: ev_manual_override_reminder
-            color: orange
+          tag: ev_manual_override_reminder
+          color: orange
+          priority: normal
 
 # ── Recorder exclusions ───────────────────────────────────────────────────────
 # Skip high-frequency / debug-only EV entities from the history database.
