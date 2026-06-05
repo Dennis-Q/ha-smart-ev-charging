@@ -268,24 +268,23 @@ NEEDS_ACTION=false
 if ! grep -q "include_dir_named packages" "$CONF" 2>/dev/null; then
     warn "Packages directory not included in configuration.yaml. Add:"
     echo ""
-    echo "      homeassistant:"
-    echo "        packages: !include_dir_named packages"
+    echo "homeassistant:"
+    echo "  packages: !include_dir_named packages"
     echo ""
     NEEDS_ACTION=true
 fi
 
 if ! grep -q "ev_dashboard.yaml" "$CONF" 2>/dev/null; then
-    warn "Dashboard not registered in configuration.yaml."
-    warn "Add the following to configuration.yaml, inside the 'lovelace: dashboards:' block:"
+    warn "Dashboard not registered in configuration.yaml. Add:"
     echo ""
-    echo "      lovelace:"
-    echo "        dashboards:"
-    echo "          ev-charging:"
-    echo "            mode: yaml"
-    echo "            title: EV Charging"
-    echo "            icon: mdi:ev-station"
-    echo "            show_in_sidebar: true"
-    echo "            filename: lovelace/ev_dashboard.yaml"
+    echo "lovelace:"
+    echo "  dashboards:"
+    echo "    ev-charging:"
+    echo "      mode: yaml"
+    echo "      title: EV Charging"
+    echo "      icon: mdi:ev-station"
+    echo "      show_in_sidebar: true"
+    echo "      filename: lovelace/ev_dashboard.yaml"
     echo ""
     NEEDS_ACTION=true
 fi
