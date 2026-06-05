@@ -76,8 +76,8 @@ views:
           until you set a valid target under <strong>Advanced settings →
           Notifications</strong>.<br><br>Current value:
           <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
-          Detected notify entities:
-          <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') }}</code>
+          Available targets:
+          <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') | join(', ') or '(none found)' }}</code>
           </ha-alert>
         visibility:
           - condition: state
@@ -292,14 +292,22 @@ views:
               - entity: binary_sensor.ev_notify_target_invalid
                 name: Validation
                 icon: mdi:check-decagram
+              - type: divider
+              - type: button
+                name: Send test notification
+                icon: mdi:bell-ring-outline
+                action_name: Send
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.ev_notify_test
           - type: markdown
             content: >-
-              Enter the full action name your phone uses, e.g.
-              `notify.mobile_app_dennis_mobile` or the entity form
-              `notify.dennis_mobile`. Leave empty to fall back to a persistent
-              HA notification. The Validation row above flips to "Detected"
-              when the value is empty, malformed, or points to a target that
-              doesn't exist.
+              Enter a legacy `notify.*` service (not a notify entity). Leave empty to fall back to a persistent notification.
+
+              Available: `{{ state_attr('binary_sensor.ev_notify_target_invalid',
+              'available_notify_entities') | join(', ') or 'none found' }}`
       - type: vertical-stack
         cards:
           - type: entities
