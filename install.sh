@@ -139,6 +139,11 @@ if [ ${#LEGACY_FILES[@]} -gt 0 ]; then
     exit 1
 fi
 
+# ── Create directories ────────────────────────────────────────────────────────
+
+mkdir -p "${CONFIG_DIR}/packages/ev"
+mkdir -p "${CONFIG_DIR}/lovelace"
+
 # ── Migration: old-location EV files ─────────────────────────────────────────
 # Before v0.4, EV files lived directly in packages/. They now live in
 # packages/ev/. If both locations exist HA loads them twice — duplicate
@@ -180,11 +185,6 @@ if [ ${#OLD_EV[@]} -gt 0 ]; then
     fi
     echo ""
 fi
-
-# ── Create directories ────────────────────────────────────────────────────────
-
-mkdir -p "${CONFIG_DIR}/packages/ev"
-mkdir -p "${CONFIG_DIR}/lovelace"
 
 # ── Core EV files — always overwrite ─────────────────────────────────────────
 # Safe to overwrite on every update; no user-editable content in these files.
