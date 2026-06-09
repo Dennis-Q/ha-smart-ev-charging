@@ -140,13 +140,13 @@ views:
           - condition: state
             entity: binary_sensor.ev_power_entity_unit_mismatch
             state: "on"
-      # ── Yellow banner: P1 sensor unit mismatch ────────────────────────────
+      # ── Red banner: P1 sensor unit mismatch ──────────────────────────────
       # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
       # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
       # to W, but other units (Wh, kWh, etc.) will produce wrong results.
       - type: markdown
         content: >-
-          <ha-alert alert-type="warning"><strong>P1 sensor unit
+          <ha-alert alert-type="error"><strong>P1 sensor unit
           mismatch</strong><br>One or both P1 power sensors are not reporting
           in <strong>W</strong>. The solar excess calculation expects watts —
           a different unit will produce wrong results.<br>
