@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented here.
 
-## [0.2.0] – 2026-06-09 *(dev)*
+## [0.2.1] – 2026-06-09
+
+### Fixed
+- **Peblar charge current entity** — two automations in `ev_generic.yaml` referenced the
+  deprecated `number.peblar_ev_charger_charge_limit` (6–16 A) with value `16`. Corrected
+  to `number.peblar_ev_charger_charge_current_limit_ma` with value `16000` mA, consistent
+  with how `ev_solar.yaml` already writes the charge current. (Thanks Mik3yZ — PR #2)
+
+## [0.2.0] – 2026-06-09
 
 ### Added
 - **`binary_sensor.ev_solar_viable`** — gates solar mode on actual measured panel production rather than sunrise/sunset. Requires configurable solar power entities to exceed `ev_solar_min_charge_threshold_w` for 2 minutes (delay_on) before activating solar mode; 5-minute delay_off prevents flickering. Falls back to sun elevation > 5° when no solar entities are configured.
