@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.2] – 2026-06-09
+
+### Fixed
+- **Home battery power sign correction** — `ev_grid_excess_power` adds back battery
+  charging power to recover true solar surplus when a home battery is configured. The
+  formula used `[batt_power, 0] | max`, which assumed positive = charging. Corrected to
+  `[-(batt_power), 0] | max` to match the actual convention of
+  `sensor.hba_total_battery_power` (positive = discharging). Previously, battery assist
+  discharge inflated `ev_grid_excess_power`, causing the EV to import from grid.
+
 ## [0.2.1] – 2026-06-09
 
 ### Fixed

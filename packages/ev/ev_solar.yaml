@@ -97,7 +97,7 @@ template:
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
           {% set current_power = grid_export - grid_import %}
-          {% set excess = current_power + charger_power + [batt_power, 0] | max - buffer %}
+          {% set excess = current_power + charger_power + [-(batt_power), 0] | max - buffer %}
           {{ excess | round(0) }}
 
       # Calculate available charging amps for SINGLE PHASE.
