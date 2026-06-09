@@ -122,6 +122,24 @@ views:
               - condition: numeric_state
                 entity: input_number.ev_solar_min_charge_threshold_w
                 above: 1380
+      # ── Red banner: power entity unit mismatch ───────────────────────────
+      # Shown when a configured solar or home battery power entity reports
+      # in kW instead of W. Attributes show the unit of each entity.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="error"><strong>Power entity unit
+          mismatch</strong><br>A configured solar or home battery power
+          entity is reporting in <strong>kW</strong> instead of
+          <strong>W</strong>. Charging calculations will produce incorrect
+          results.<br>
+          • Solar entity 1: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_1_unit') }}</strong><br>
+          • Solar entity 2: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_2_unit') }}</strong><br>
+          • Battery entity: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'battery_entity_unit') }}</strong><br><br>
+          Fix under <strong>Advanced settings → Power entities</strong>.</ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_power_entity_unit_mismatch
+            state: "on"
       # ── Yellow banner: P1 sensor unit mismatch ────────────────────────────
       # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
       # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
@@ -147,6 +165,7 @@ views:
             name: Manual Override (stop HA)
           - type: divider
           - entity: input_boolean.ev_solar_charging
+          - entity: input_boolean.ev_battery_assist_charging
           - entity: input_boolean.ev_window_charging
           - entity: input_number.ev_window_charging_start_hour
             name: Window Start (Hour)
@@ -197,6 +216,8 @@ views:
             name: Expected Charging Limit
           - entity: sensor.ev_charging_mode
             name: Charging Mode
+          - entity: binary_sensor.ev_solar_viable
+            name: Solar Viable
           - entity: sensor.peblar_ev_charger_power
             name: Charger Current Power
           - entity: sensor.peblar_ev_charger_state
@@ -338,6 +359,48 @@ views:
               Three-phase minimum is ~4140 W (6 A × 690 V); single-phase
               minimum is ~1380 W (6 A × 230 V). Below the **stop charging**
               threshold the controller pauses entirely.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Power entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_solar_power_entity_1
+                name: Solar power entity 1
+              - entity: input_text.ev_solar_power_entity_2
+                name: Solar power entity 2
+              - type: divider
+              - entity: input_text.ev_home_battery_power_entity
+                name: Home battery power entity
+              - entity: input_text.ev_home_battery_assist_active_entity
+                name: Battery assist active entity
+              - type: divider
+              - entity: binary_sensor.ev_solar_viable
+                name: Solar viable (status)
+                icon: mdi:solar-power
+              - entity: binary_sensor.ev_power_entity_unit_mismatch
+                name: Unit mismatch (status)
+          - type: markdown
+            content: >-
+              Point these at real-time power sensors reporting in **W** (not
+              kW). All fields are optional — leave empty if not applicable.
+
+              **Solar entity 1 / 2**: AC output of your inverter(s) in W.
+              Gates solar mode on measured production instead of sun
+              position. Two inverters (e.g. Enphase + SolarEdge) are summed.
+              Falls back to sun elevation > 5° when both are empty.
+
+              **Home battery power entity**: Bidirectional battery power
+              (positive = charging, negative = discharging). Adds the
+              charging component back into the grid excess calculation so
+              solar absorbed by home batteries is visible to the EV charger.
+              Example: `sensor.hba_total_battery_power`
+
+              **Battery assist active entity**: Binary sensor published by
+              your home battery system when it is willing to discharge for EV
+              charging. Requires **EV Battery Assist Charging** (main
+              settings) to also be enabled.
+              Example: `binary_sensor.hba_battery_assist_active`
       - type: entities
         title: Reset
         entities:
