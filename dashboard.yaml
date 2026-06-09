@@ -135,7 +135,9 @@ views:
           • Solar entity 1: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_1_unit') }}</strong><br>
           • Solar entity 2: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_2_unit') }}</strong><br>
           • Battery entity: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'battery_entity_unit') }}</strong><br><br>
-          Fix under <strong>Advanced settings → Power entities</strong>.</ha-alert>
+          To fix: change the unit of the entity to <strong>W</strong> in Home Assistant
+          (Settings → Devices &amp; Services → Entities → select entity → Unit of measurement).
+          Note this may affect other automations or dashboards using the same entity.</ha-alert>
         visibility:
           - condition: state
             entity: binary_sensor.ev_power_entity_unit_mismatch
