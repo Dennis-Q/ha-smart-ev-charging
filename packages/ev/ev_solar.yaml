@@ -6,6 +6,10 @@ input_boolean:
     name: "EV Solar Charging"
     icon: mdi:sun-compass
 
+  ev_battery_assist_charging:
+    name: "EV Battery Assist Charging"
+    icon: mdi:battery-charging
+
 input_number:
   ev_charging_limit_solar:
     name: "EV Charging Limit Solar"
@@ -15,6 +19,54 @@ input_number:
     step: 10
     icon: mdi:sun-clock
 
+input_text:
+  # Point these at real-time power sensors that report in W (not kW).
+  # All four are optional — leave empty if not applicable to your setup.
+
+  # ev_solar_power_entity_1 / _2
+  #   Real-time AC output of a solar inverter in W (positive = producing).
+  #   Supports two inverters (e.g. Enphase + SolarEdge); outputs are summed.
+  #   When either is set, binary_sensor.ev_solar_viable uses the measured
+  #   production instead of sun.sun above_horizon, so solar mode only
+  #   activates when panels are actually producing — not at astronomical
+  #   sunrise. Falls back to sun elevation > 5° when both are empty.
+  #   Example: sensor.enphase_production_w  /  sensor.solaredge_ac_power
+  ev_solar_power_entity_1:
+    name: "EV Solar power entity 1"
+    icon: mdi:solar-power
+    max: 100
+  ev_solar_power_entity_2:
+    name: "EV Solar power entity 2"
+    icon: mdi:solar-power
+    max: 100
+
+  # ev_home_battery_power_entity
+  #   Net battery power from a home battery system in W (bidirectional:
+  #   positive = charging, negative = discharging).
+  #   When set, ev_grid_excess_power adds back the positive (charging)
+  #   component, so solar surplus absorbed by home batteries becomes visible
+  #   to the EV charger. Leave empty without a home battery.
+  #   Example (HBA / Marstek): sensor.hba_total_battery_power
+  ev_home_battery_power_entity:
+    name: "EV Home battery power entity"
+    icon: mdi:home-battery
+    max: 100
+
+  # ev_home_battery_assist_active_entity
+  #   A binary_sensor published by your home battery system that is 'on'
+  #   when the battery is willing to discharge for EV charging (e.g. SoC
+  #   above a configured minimum, a discharge-for-EV strategy is running).
+  #   When 'on' AND input_boolean.ev_battery_assist_charging is enabled,
+  #   the EV enters battery_assist mode: surplus-tracking regulation (same
+  #   as solar mode) with the home battery as the power source. Combining
+  #   with solar is automatic — both sources contribute to ev_grid_excess.
+  #   The battery system controls when this entity is active; the EV side
+  #   only consumes the resulting boolean.
+  #   Example (HBA): binary_sensor.hba_battery_assist_active
+  ev_home_battery_assist_active_entity:
+    name: "EV Home battery assist active entity"
+    icon: mdi:battery-arrow-up
+    max: 100
 
 ## Templates & sensors
 
@@ -42,8 +94,10 @@ template:
           {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
           {% set charger_power = states('sensor.peblar_ev_charger_power') | float(500) %}
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
+          {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
+          {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
           {% set current_power = grid_export - grid_import %}
-          {% set excess = current_power + charger_power - buffer %}
+          {% set excess = current_power + charger_power + [batt_power, 0] | max - buffer %}
           {{ excess | round(0) }}
 
       # Calculate available charging amps for SINGLE PHASE.
@@ -194,6 +248,53 @@ template:
           {% endif %}
 
   - binary_sensor:
+      # ON when solar panels are producing enough to start EV charging.
+      # If ev_solar_power_entity_1 or _2 are configured: ON when the sum of
+      # their outputs exceeds ev_solar_min_charge_threshold_w, sustained for
+      # 2 minutes. delay_off: 5 minutes prevents mode-flapping on brief clouds.
+      # If both entities are empty: falls back to sun elevation > 5°.
+      # Used by sensor.ev_charging_mode to gate solar mode instead of the
+      # coarser sun.sun above_horizon check.
+      - name: "EV Solar Viable"
+        unique_id: ev_solar_viable
+        state: >
+          {%- set e1 = states('input_text.ev_solar_power_entity_1') | trim -%}
+          {%- set e2 = states('input_text.ev_solar_power_entity_2') | trim -%}
+          {%- set skip = ['', 'unknown', 'unavailable', 'none'] -%}
+          {%- set s1 = states(e1) | float(0) if e1 not in skip else 0 -%}
+          {%- set s2 = states(e2) | float(0) if e2 not in skip else 0 -%}
+          {%- set has_sensor = e1 not in skip or e2 not in skip -%}
+          {%- set min_w = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) -%}
+          {{ (s1 + s2 > min_w) if has_sensor else state_attr('sun.sun', 'elevation') | float(0) > 5 }}
+        delay_on: "00:02:00"
+        delay_off: "00:05:00"
+
+      # ON when a configured solar or home battery power entity reports in kW
+      # instead of W. All EV charging calculations expect W; kW input will
+      # produce results roughly 1000× too small, silently breaking regulation.
+      - name: "EV Power Entity Unit Mismatch"
+        unique_id: ev_power_entity_unit_mismatch
+        device_class: problem
+        state: >-
+          {%- set e1 = states('input_text.ev_solar_power_entity_1') | trim -%}
+          {%- set e2 = states('input_text.ev_solar_power_entity_2') | trim -%}
+          {%- set eb = states('input_text.ev_home_battery_power_entity') | trim -%}
+          {%- set skip = ['', 'unknown', 'unavailable', 'none'] -%}
+          {%- set u1 = state_attr(e1, 'unit_of_measurement') if e1 not in skip else 'W' -%}
+          {%- set u2 = state_attr(e2, 'unit_of_measurement') if e2 not in skip else 'W' -%}
+          {%- set ub = state_attr(eb, 'unit_of_measurement') if eb not in skip else 'W' -%}
+          {{ u1 == 'kW' or u2 == 'kW' or ub == 'kW' }}
+        attributes:
+          solar_entity_1_unit: >-
+            {%- set e = states('input_text.ev_solar_power_entity_1') | trim -%}
+            {{ state_attr(e, 'unit_of_measurement') if e not in ['', 'unknown', 'unavailable', 'none'] else 'not set' }}
+          solar_entity_2_unit: >-
+            {%- set e = states('input_text.ev_solar_power_entity_2') | trim -%}
+            {{ state_attr(e, 'unit_of_measurement') if e not in ['', 'unknown', 'unavailable', 'none'] else 'not set' }}
+          battery_entity_unit: >-
+            {%- set e = states('input_text.ev_home_battery_power_entity') | trim -%}
+            {{ state_attr(e, 'unit_of_measurement') if e not in ['', 'unknown', 'unavailable', 'none'] else 'not set' }}
+
       # ON when either P1 sensor does not report in W.
       # ev_grid_excess_power auto-scales kW → W, but other unexpected units
       # (e.g. Wh, kWh, or unavailable) will still produce wrong results.
@@ -241,17 +342,35 @@ automation:
         for: "00:04:00" # was 5 but feels slow?
         # for: "00:00:50" # for testing
         id: ev_3p
-    conditions: # some disabled for testing?
+      # Fires when mode enters solar/battery_assist while ev_optimal_charging_phase_mode
+      # was already 'stop' (e.g. window→solar at sunrise before any production).
+      # Same 2-minute delay as ev_stop so behaviour is consistent.
+      # If phase mode flips to single/three_phase within those 2 minutes the
+      # existing ev_1p/ev_3p triggers take over (mode:restart cancels this one).
+      - trigger: state
+        entity_id: sensor.ev_charging_mode
+        to:
+          - "solar"
+          - "battery_assist"
+        for: "00:02:00"
+        id: ev_mode_entry
+    conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
-      - condition: state
-        entity_id: input_boolean.ev_solar_charging
-        state: "on"
-      ## Should probably be added?
-      - condition: state 
-        entity_id: sensor.ev_charging_mode
-        state: "solar"
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "solar"
+              - condition: state
+                entity_id: input_boolean.ev_solar_charging
+                state: "on"
+          - condition: state
+            entity_id: sensor.ev_charging_mode
+            state: "battery_assist"
     actions:
       - choose:
           # Stop
@@ -296,6 +415,24 @@ automation:
               - action: switch.turn_on # allow charging
                 target:
                   entity_id: switch.peblar_ev_charger_charge
+          # Mode entry cleanup: charger was left on by window/cheapest and
+          # phase mode is already stop — turn off without waiting for a
+          # phase-mode state change that will never come.
+          - conditions:
+              - condition: trigger
+                id: ev_mode_entry
+            sequence:
+              - if:
+                  - condition: state
+                    entity_id: sensor.ev_optimal_charging_phase_mode
+                    state: "stop"
+                  - condition: state
+                    entity_id: switch.peblar_ev_charger_charge
+                    state: "on"
+                then:
+                  - action: switch.turn_off
+                    target:
+                      entity_id: switch.peblar_ev_charger_charge
 
   - id: ev_solar_dynamic_power_control
     alias: "EV Solar Dynamic Power Control"
@@ -311,18 +448,22 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "solar"
+              - condition: state
+                entity_id: input_boolean.ev_solar_charging
+                state: "on"
+          - condition: state
+            entity_id: sensor.ev_charging_mode
+            state: "battery_assist"
       - condition: state
-        entity_id: input_boolean.ev_solar_charging
-        state: "on"
-      - condition: state # Disable for testing
         entity_id: switch.peblar_ev_charger_charge
         state: "on"
-      - condition: state
-        entity_id: sensor.ev_charging_mode
-        state: "solar"
-      # - condition: state # Is this smart or impacting? if done doesn't work with manual turn-on.
-      #   entity_id: binary_sensor.ev_is_charging
-      #   state: "on"
     actions:
       - action: number.set_value
         target:
@@ -348,3 +489,51 @@ automation:
               {# Single phase mode and also active #}
               {{ ma_1f if ma_1f >= 6000 else 6000 }}
             {% endif %}
+
+  - id: ev_power_entity_unit_mismatch_notification
+    alias: "EV: Power entity unit mismatch notification"
+    description: >-
+      Notifies when a configured solar or home battery power entity reports
+      in kW instead of W. Fires on HA start and on state change to on.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_power_entity_unit_mismatch
+        to: "on"
+      - trigger: homeassistant
+        event: start
+    actions:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.ev_power_entity_unit_mismatch
+                state: "on"
+            sequence:
+              - action: script.ev_notify_dispatch
+                data:
+                  title: "EV: Power entity unit mismatch"
+                  message: >-
+                    A configured solar or home battery power entity is
+                    reporting in kW instead of W. Charging calculations
+                    will produce incorrect results. Check
+                    ev_solar_power_entity_1, ev_solar_power_entity_2, or
+                    ev_home_battery_power_entity.
+                  tag: ev_power_entity_unit_mismatch
+                  color: red
+                  priority: high
+              - action: persistent_notification.create
+                data:
+                  notification_id: ev_power_entity_unit_mismatch
+                  title: "EV: Power entity unit mismatch"
+                  message: >-
+                    A configured solar or home battery power entity reports
+                    in **kW** instead of **W**. EV charging calculations
+                    will produce incorrect results.
+
+                    Check **EV Charging → Settings → Power entities**:
+                    `ev_solar_power_entity_1`, `ev_solar_power_entity_2`,
+                    or `ev_home_battery_power_entity`.
+        default:
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: ev_power_entity_unit_mismatch

@@ -162,14 +162,15 @@ script:
             - input_boolean.ev_force_charge_permanent
             - input_boolean.ev_charge_prefer_tariff_over_solar
             - input_boolean.ev_solar_charging
+            - input_boolean.ev_battery_assist_charging
             - input_boolean.ev_window_charging
             - input_boolean.ev_dynamic_tariff_optimization
       - action: input_boolean.turn_on
         target:
           entity_id: input_boolean.ev_notifications_enabled
-      # Note: input_text.ev_notify_entity_id is deliberately NOT reset.
-      # Once a user has set their notify target, there's no scenario where
-      # we'd want to wipe it back to empty.
+      # Note: input_text helpers (ev_notify_entity_id, ev_solar_power_entity_1/2,
+      # ev_home_battery_power_entity, ev_home_battery_assist_active_entity) are
+      # deliberately NOT reset — they are install-specific wiring.
 
   # Narrow reset for just the three solar phase-switch thresholds.
   # Used by the yellow warning banner and the small button under the
@@ -282,22 +283,28 @@ template:
         unique_id: ev_expected_charging_limit
         unit_of_measurement: "%"
         state: >
-          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on')  %}
+          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
           {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
+          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
           {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
-          {% set sun_up = is_state('sun.sun', 'above_horizon') %}
-
+          {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
+          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
+          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
+                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
+                                      is_state(batt_assist_e, 'on') %}
           {% if is_force_charging %}
             {{ states('input_number.ev_charging_limit_force') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %} 
+          {% elif battery_assist_on %}
+            {{ states('input_number.ev_charging_limit_solar') | int }}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %}
             {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif solar_enabled and sun_up %}
+          {% elif solar_enabled and solar_viable %}
             {{ states('input_number.ev_charging_limit_solar') | int }}
           {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
             {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif is_window_active and not tarif_optimization  %}
+          {% elif is_window_active and not tarif_optimization %}
             {{ states('input_number.ev_charging_limit_window') | int }}
           {% endif %}
 
@@ -305,23 +312,28 @@ template:
       - name: "EV Charging Mode"
         unique_id: ev_charging_mode
         state: >
-          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on')  %}
+          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
           {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
           {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
           {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
-          {% set sun_up = is_state('sun.sun', 'above_horizon') %}
-
+          {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
+          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
+          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
+                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
+                                      is_state(batt_assist_e, 'on') %}
           {% if is_force_charging %}
             force
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %} 
+          {% elif battery_assist_on %}
+            battery_assist
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %}
             cheapest
-          {% elif solar_enabled and sun_up %}
+          {% elif solar_enabled and solar_viable %}
             solar
           {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
             cheapest
-          {% elif is_window_active and not tarif_optimization  %}
+          {% elif is_window_active and not tarif_optimization %}
             window
           {% else %}
             none
@@ -621,6 +633,7 @@ automation:
           - input_boolean.ev_force_charge_permanent
           - input_boolean.ev_force_charge_once
           - input_boolean.ev_solar_charging
+          - input_boolean.ev_battery_assist_charging
           - input_boolean.ev_window_charging
           - binary_sensor.ev_is_charging
           - binary_sensor.ev_is_connected
@@ -889,8 +902,8 @@ automation:
 
 # ── Recorder exclusions ───────────────────────────────────────────────────────
 # Skip high-frequency / debug-only EV entities from the history database.
-# HBA manages its own recorder excludes separately in
-# /config/packages/hba_helpers.yaml; HA merges both at load time.
+# Other packages (e.g. a home battery package) may add their own recorder
+# excludes in separate files; HA merges all package recorder blocks at load time.
 #
 # What's intentionally kept:
 #   - sensor.ev_grid_excess_power_smoothed: smoothed signal that actually
