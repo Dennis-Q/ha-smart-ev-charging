@@ -342,15 +342,35 @@ automation:
         for: "00:04:00" # was 5 but feels slow?
         # for: "00:00:50" # for testing
         id: ev_3p
+      # Fires when mode enters solar/battery_assist while ev_optimal_charging_phase_mode
+      # was already 'stop' (e.g. window→solar at sunrise before any production).
+      # Same 2-minute delay as ev_stop so behaviour is consistent.
+      # If phase mode flips to single/three_phase within those 2 minutes the
+      # existing ev_1p/ev_3p triggers take over (mode:restart cancels this one).
+      - trigger: state
+        entity_id: sensor.ev_charging_mode
+        to:
+          - "solar"
+          - "battery_assist"
+        for: "00:02:00"
+        id: ev_mode_entry
     conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
-      - condition: template
-        value_template: >-
-          {{ (states('sensor.ev_charging_mode') == 'solar' and
-              is_state('input_boolean.ev_solar_charging', 'on')) or
-             states('sensor.ev_charging_mode') == 'battery_assist' }}
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "solar"
+              - condition: state
+                entity_id: input_boolean.ev_solar_charging
+                state: "on"
+          - condition: state
+            entity_id: sensor.ev_charging_mode
+            state: "battery_assist"
     actions:
       - choose:
           # Stop
@@ -395,6 +415,24 @@ automation:
               - action: switch.turn_on # allow charging
                 target:
                   entity_id: switch.peblar_ev_charger_charge
+          # Mode entry cleanup: charger was left on by window/cheapest and
+          # phase mode is already stop — turn off without waiting for a
+          # phase-mode state change that will never come.
+          - conditions:
+              - condition: trigger
+                id: ev_mode_entry
+            sequence:
+              - if:
+                  - condition: state
+                    entity_id: sensor.ev_optimal_charging_phase_mode
+                    state: "stop"
+                  - condition: state
+                    entity_id: switch.peblar_ev_charger_charge
+                    state: "on"
+                then:
+                  - action: switch.turn_off
+                    target:
+                      entity_id: switch.peblar_ev_charger_charge
 
   - id: ev_solar_dynamic_power_control
     alias: "EV Solar Dynamic Power Control"
@@ -410,11 +448,19 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
-      - condition: template
-        value_template: >-
-          {{ (states('sensor.ev_charging_mode') == 'solar' and
-              is_state('input_boolean.ev_solar_charging', 'on')) or
-             states('sensor.ev_charging_mode') == 'battery_assist' }}
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "solar"
+              - condition: state
+                entity_id: input_boolean.ev_solar_charging
+                state: "on"
+          - condition: state
+            entity_id: sensor.ev_charging_mode
+            state: "battery_assist"
       - condition: state
         entity_id: switch.peblar_ev_charger_charge
         state: "on"
