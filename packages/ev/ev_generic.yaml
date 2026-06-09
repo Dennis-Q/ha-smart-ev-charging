@@ -902,8 +902,8 @@ automation:
 
 # ── Recorder exclusions ───────────────────────────────────────────────────────
 # Skip high-frequency / debug-only EV entities from the history database.
-# HBA manages its own recorder excludes separately in
-# /config/packages/hba_helpers.yaml; HA merges both at load time.
+# Other packages (e.g. a home battery package) may add their own recorder
+# excludes in separate files; HA merges all package recorder blocks at load time.
 #
 # What's intentionally kept:
 #   - sensor.ev_grid_excess_power_smoothed: smoothed signal that actually

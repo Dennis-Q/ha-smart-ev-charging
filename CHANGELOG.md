@@ -11,7 +11,7 @@ All notable changes to this project will be documented here.
   - `ev_solar_power_entity_1` / `ev_solar_power_entity_2` — solar inverter power sensors (W)
   - `ev_home_battery_power_entity` — home battery power sensor (W, positive = charging)
   - `ev_home_battery_assist_active_entity` — `on`/`off` entity that signals the home battery is actively assisting EV charging
-- **HBA zero-balance correction in `ev_grid_excess_power`** — when a home battery is configured and absorbing solar (keeping grid ≈ 0), the excess calculation now adds back the battery's positive (charging) component so solar surplus is visible to the EV control loop.
+- **Home battery zero-balance correction in `ev_grid_excess_power`** — when a home battery is configured and absorbing solar (keeping grid ≈ 0), the excess calculation now adds back the battery's positive (charging) component so solar surplus is visible to the EV control loop.
 - **`binary_sensor.ev_power_entity_unit_mismatch`** — detects when any configured solar or home battery power entity reports in kW instead of W; attributes list per-entity units for diagnosis.
 - **Unit mismatch notification** — push + persistent notification when `ev_power_entity_unit_mismatch` turns on; auto-dismissed when resolved.
 - **Dashboard: Power entities section** in Advanced Settings with all four `input_text` fields, status binary sensors, and inline documentation.
