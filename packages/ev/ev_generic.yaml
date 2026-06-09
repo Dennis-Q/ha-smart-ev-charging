@@ -568,9 +568,9 @@ automation:
           entity_id: switch.peblar_ev_charger_force_single_phase
       - action: number.set_value
         target:
-          entity_id: number.peblar_ev_charger_charge_limit
+          entity_id: number.peblar_ev_charger_charge_current_limit_ma
         data:
-          value: 16
+          value: 16000
       - action: switch.turn_on
         target:
           entity_id: switch.peblar_ev_charger_charge
