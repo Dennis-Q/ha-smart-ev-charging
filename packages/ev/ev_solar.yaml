@@ -362,6 +362,18 @@ automation:
         to: "battery_assist"
         for: "00:00:30"
         id: ev_battery_assist_entry
+      # Phase recovery for battery_assist: fires 30 s after phase mode becomes
+      # non-stop while in battery_assist. Catches the case where ev_battery_assist_entry
+      # fires while phase mode is still stop (timing miss), and also re-arms after
+      # each overflow-guard cycle that drops phase mode back to stop.
+      # No-op if charger is already on or ev_charging_mode is not battery_assist.
+      - trigger: state
+        entity_id: sensor.ev_optimal_charging_phase_mode
+        to:
+          - "single_phase"
+          - "three_phase"
+        for: "00:00:30"
+        id: ev_battery_assist_phase_recovery
     conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
@@ -447,6 +459,55 @@ automation:
           - conditions:
               - condition: trigger
                 id: ev_battery_assist_entry
+              - condition: state
+                entity_id: switch.peblar_ev_charger_charge
+                state: "off"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "single_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: >
+                            {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                            {{ ma if ma >= 6000 else 6000 }}
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "three_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: 6000
+                      - action: switch.turn_off
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
+          # Phase recovery for battery_assist: fires after ev_battery_assist_phase_recovery
+          # trigger (phase mode non-stop for 30 s). Handles the case where
+          # ev_battery_assist_entry fired while phase mode was still stop, and
+          # also re-arms the charger after each overflow-guard cycle resets phase mode.
+          - conditions:
+              - condition: trigger
+                id: ev_battery_assist_phase_recovery
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "battery_assist"
               - condition: state
                 entity_id: switch.peblar_ev_charger_charge
                 state: "off"
