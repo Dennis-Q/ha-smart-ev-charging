@@ -248,13 +248,15 @@ template:
           {% endif %}
 
   - binary_sensor:
-      # ON when solar panels are producing enough to start EV charging.
+      # ON when solar panels are producing meaningful output.
       # If ev_solar_power_entity_1 or _2 are configured: ON when the sum of
-      # their outputs exceeds ev_solar_min_charge_threshold_w, sustained for
-      # 2 minutes. delay_off: 5 minutes prevents mode-flapping on brief clouds.
+      # their outputs exceeds 100 W, sustained for 2 minutes.
+      # delay_off: 5 minutes prevents mode-flapping on brief clouds.
       # If both entities are empty: falls back to sun elevation > 5°.
-      # Used by sensor.ev_charging_mode to gate solar mode instead of the
-      # coarser sun.sun above_horizon check.
+      # 100 W is intentionally low — it gates "is the sun doing anything",
+      # not "is there enough to charge". The actual stop/phase decision is
+      # handled by sensor.ev_optimal_charging_phase_mode using
+      # ev_solar_min_charge_threshold_w (1380 W).
       - name: "EV Solar Viable"
         unique_id: ev_solar_viable
         state: >
@@ -264,8 +266,7 @@ template:
           {%- set s1 = states(e1) | float(0) if e1 not in skip else 0 -%}
           {%- set s2 = states(e2) | float(0) if e2 not in skip else 0 -%}
           {%- set has_sensor = e1 not in skip or e2 not in skip -%}
-          {%- set min_w = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) -%}
-          {{ (s1 + s2 > min_w) if has_sensor else state_attr('sun.sun', 'elevation') | float(0) > 5 }}
+          {{ (s1 + s2 > 100) if has_sensor else state_attr('sun.sun', 'elevation') | float(0) > 5 }}
         delay_on: "00:02:00"
         delay_off: "00:05:00"
 
