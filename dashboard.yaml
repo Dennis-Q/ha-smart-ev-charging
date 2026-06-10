@@ -331,6 +331,16 @@ views:
 
               Available: `{{ state_attr('binary_sensor.ev_notify_target_invalid',
               'available_notify_entities') | join(', ') or 'none found' }}`
+          - type: custom:auto-entities
+            card:
+              type: entities
+              title: Notification automations
+              show_header_toggle: false
+            filter:
+              include:
+                - entity_id: "automation.ev_*notif*"
+            sort:
+              method: friendly_name
       - type: vertical-stack
         cards:
           - type: entities
