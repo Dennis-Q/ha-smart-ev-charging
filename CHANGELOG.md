@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.3] – 2026-06-10
+
+### Added
+- **Battery assist fast start** — new `ev_battery_assist_entry` trigger fires 30 s
+  after `battery_assist` mode is entered and starts the charger immediately based on
+  the current phase mode, bypassing the normal 2–4 minute `ev_1p`/`ev_3p` delays.
+  No-op if the charger is already on or if phase mode is still `stop`.
+
 ## [0.2.2] – 2026-06-09
 
 ### Fixed
