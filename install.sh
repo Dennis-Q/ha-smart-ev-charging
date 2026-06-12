@@ -289,6 +289,21 @@ if ! grep -q "ev_dashboard.yaml" "$CONF" 2>/dev/null; then
     NEEDS_ACTION=true
 fi
 
+if ! grep -qE "^\s*- modbus" "$CONF" 2>/dev/null; then
+    warn "Modbus domain not excluded from logbook in configuration.yaml."
+    say "The EV charger uses Modbus for real-time current control — without this"
+    say "the logbook accumulates Modbus register writes every few seconds."
+    echo ""
+    echo "logbook:"
+    echo "  exclude:"
+    echo "    domains:"
+    echo "      - modbus"
+    echo ""
+    say "Skip this if you want Modbus service calls visible in the logbook."
+    echo ""
+    NEEDS_ACTION=true
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 hr

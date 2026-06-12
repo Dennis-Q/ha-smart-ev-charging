@@ -910,7 +910,7 @@ automation:
 #     drives the phase-switch decision; useful for retrospective analysis
 #   - sensor.ev_optimal_charging_phase_mode: low-cardinality decision output
 #     (stop / single_phase / three_phase); transitions only
-#   - All input_*.ev_*, all binary_sensor.ev_*, all automations, all scripts
+#   - All other input_*.ev_*, binary_sensor.ev_*, automations, scripts
 recorder:
   exclude:
     entities:
@@ -921,3 +921,24 @@ recorder:
       - sensor.ev_available_charging_ma_three_phase
       - sensor.ev_debug_solar_values
       - sensor.ev_charging_debug_info
+      # Control loop — triggers every 3 s while charging; history not useful
+      - automation.ev_solar_dynamic_power_control
+      # Charger current setpoint — written every 3 s by the control loop
+      - number.peblar_ev_charger_charge_current_limit_ma
+
+# ── Logbook exclusions ────────────────────────────────────────────────────────
+# Suppress high-frequency EV control-loop entries from the HA logbook.
+# The modbus domain exclusion is intentionally absent here — add it to
+# configuration.yaml instead (install.sh checks for this):
+#
+#   logbook:
+#     exclude:
+#       domains:
+#         - modbus   # suppresses Peblar Modbus register writes from the logbook
+logbook:
+  exclude:
+    entities:
+      # Control loop — triggers every 3 s while solar/battery_assist charging is active
+      - automation.ev_solar_dynamic_power_control
+      # Charger current setpoint — written every 3 s by the control loop
+      - number.peblar_ev_charger_charge_current_limit_ma
