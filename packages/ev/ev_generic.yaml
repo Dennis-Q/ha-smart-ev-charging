@@ -906,8 +906,6 @@ automation:
 # excludes in separate files; HA merges all package recorder blocks at load time.
 #
 # What's intentionally kept:
-#   - sensor.ev_grid_excess_power_smoothed: smoothed signal that actually
-#     drives the phase-switch decision; useful for retrospective analysis
 #   - sensor.ev_optimal_charging_phase_mode: low-cardinality decision output
 #     (stop / single_phase / three_phase); transitions only
 #   - All other input_*.ev_*, binary_sensor.ev_*, automations, scripts
@@ -915,6 +913,8 @@ recorder:
   exclude:
     entities:
       - sensor.ev_grid_excess_power
+      # Smoothed control signal — changes at P1 rate (~1 Hz), not useful as history
+      - sensor.ev_grid_excess_power_smoothed
       - sensor.ev_available_charging_amps_single_phase
       - sensor.ev_available_charging_amps_three_phase
       - sensor.ev_available_charging_ma_single_phase
