@@ -255,23 +255,23 @@ template:
         device_class: problem
         state: >-
           {%- set v = states('input_text.ev_notify_entity_id') | trim -%}
-          {%- set notify_entities = states.notify | map(attribute='entity_id') | list -%}
           {%- if v in ['', 'unknown', 'unavailable'] -%}
             true
           {%- elif not v.startswith('notify.') -%}
             true
-          {%- elif v in notify_entities -%}
-            true
-          {%- else -%}
+          {%- elif v.startswith('notify.mobile_app_') -%}
             false
+          {%- else -%}
+            true
           {%- endif -%}
         attributes:
           notify_target: "{{ states('input_text.ev_notify_entity_id') }}"
           available_notify_entities: >-
-            {{ states.notify
-               | map(attribute='entity_id')
-               | map('replace', 'notify.', 'notify.mobile_app_')
-               | list }}
+            {%- set ns = namespace(result=[]) -%}
+            {%- for e in states.notify -%}
+              {%- set ns.result = ns.result + ['notify.mobile_app_' + e.entity_id[7:]] -%}
+            {%- endfor -%}
+            {{ ns.result }}
   - sensor:
       # Determine expected charging limit
       # Ideas:
@@ -906,18 +906,39 @@ automation:
 # excludes in separate files; HA merges all package recorder blocks at load time.
 #
 # What's intentionally kept:
-#   - sensor.ev_grid_excess_power_smoothed: smoothed signal that actually
-#     drives the phase-switch decision; useful for retrospective analysis
 #   - sensor.ev_optimal_charging_phase_mode: low-cardinality decision output
 #     (stop / single_phase / three_phase); transitions only
-#   - All input_*.ev_*, all binary_sensor.ev_*, all automations, all scripts
+#   - All other input_*.ev_*, binary_sensor.ev_*, automations, scripts
 recorder:
   exclude:
     entities:
       - sensor.ev_grid_excess_power
+      # Smoothed control signal — changes at P1 rate (~1 Hz), not useful as history
+      - sensor.ev_grid_excess_power_smoothed
       - sensor.ev_available_charging_amps_single_phase
       - sensor.ev_available_charging_amps_three_phase
       - sensor.ev_available_charging_ma_single_phase
       - sensor.ev_available_charging_ma_three_phase
       - sensor.ev_debug_solar_values
       - sensor.ev_charging_debug_info
+      # Control loop — triggers every 3 s while charging; history not useful
+      - automation.ev_solar_dynamic_power_control
+      # Charger current setpoint — written every 3 s by the control loop
+      - number.peblar_ev_charger_charge_current_limit_ma
+
+# ── Logbook exclusions ────────────────────────────────────────────────────────
+# Suppress high-frequency EV control-loop entries from the HA logbook.
+# The modbus domain exclusion is intentionally absent here — add it to
+# configuration.yaml instead (install.sh checks for this):
+#
+#   logbook:
+#     exclude:
+#       domains:
+#         - modbus   # suppresses Peblar Modbus register writes from the logbook
+logbook:
+  exclude:
+    entities:
+      # Control loop — triggers every 3 s while solar/battery_assist charging is active
+      - automation.ev_solar_dynamic_power_control
+      # Charger current setpoint — written every 3 s by the control loop
+      - number.peblar_ev_charger_charge_current_limit_ma

@@ -97,7 +97,7 @@ template:
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
           {% set current_power = grid_export - grid_import %}
-          {% set excess = current_power + charger_power + [batt_power, 0] | max - buffer %}
+          {% set excess = current_power + charger_power + [-(batt_power), 0] | max - buffer %}
           {{ excess | round(0) }}
 
       # Calculate available charging amps for SINGLE PHASE.
@@ -248,13 +248,15 @@ template:
           {% endif %}
 
   - binary_sensor:
-      # ON when solar panels are producing enough to start EV charging.
+      # ON when solar panels are producing meaningful output.
       # If ev_solar_power_entity_1 or _2 are configured: ON when the sum of
-      # their outputs exceeds ev_solar_min_charge_threshold_w, sustained for
-      # 2 minutes. delay_off: 5 minutes prevents mode-flapping on brief clouds.
+      # their outputs exceeds 100 W, sustained for 2 minutes.
+      # delay_off: 5 minutes prevents mode-flapping on brief clouds.
       # If both entities are empty: falls back to sun elevation > 5°.
-      # Used by sensor.ev_charging_mode to gate solar mode instead of the
-      # coarser sun.sun above_horizon check.
+      # 100 W is intentionally low — it gates "is the sun doing anything",
+      # not "is there enough to charge". The actual stop/phase decision is
+      # handled by sensor.ev_optimal_charging_phase_mode using
+      # ev_solar_min_charge_threshold_w (1380 W).
       - name: "EV Solar Viable"
         unique_id: ev_solar_viable
         state: >
@@ -264,8 +266,7 @@ template:
           {%- set s1 = states(e1) | float(0) if e1 not in skip else 0 -%}
           {%- set s2 = states(e2) | float(0) if e2 not in skip else 0 -%}
           {%- set has_sensor = e1 not in skip or e2 not in skip -%}
-          {%- set min_w = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) -%}
-          {{ (s1 + s2 > min_w) if has_sensor else state_attr('sun.sun', 'elevation') | float(0) > 5 }}
+          {{ (s1 + s2 > 100) if has_sensor else state_attr('sun.sun', 'elevation') | float(0) > 5 }}
         delay_on: "00:02:00"
         delay_off: "00:05:00"
 
@@ -354,6 +355,25 @@ automation:
           - "battery_assist"
         for: "00:02:00"
         id: ev_mode_entry
+      # Fast start for battery_assist: skips the 2-4 min phase-mode trigger delays.
+      # Fires 30 s after mode entry so P1/battery readings have stabilised.
+      - trigger: state
+        entity_id: sensor.ev_charging_mode
+        to: "battery_assist"
+        for: "00:00:30"
+        id: ev_battery_assist_entry
+      # Phase recovery for battery_assist: fires 30 s after phase mode becomes
+      # non-stop while in battery_assist. Catches the case where ev_battery_assist_entry
+      # fires while phase mode is still stop (timing miss), and also re-arms after
+      # each overflow-guard cycle that drops phase mode back to stop.
+      # No-op if charger is already on or ev_charging_mode is not battery_assist.
+      - trigger: state
+        entity_id: sensor.ev_optimal_charging_phase_mode
+        to:
+          - "single_phase"
+          - "three_phase"
+        for: "00:00:30"
+        id: ev_battery_assist_phase_recovery
     conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
@@ -433,6 +453,100 @@ automation:
                   - action: switch.turn_off
                     target:
                       entity_id: switch.peblar_ev_charger_charge
+          # Battery assist fast start: start charging 30 s after mode entry
+          # without waiting for ev_1p/ev_3p trigger delays. No-op if the
+          # charger is already on or phase mode is still stop.
+          - conditions:
+              - condition: trigger
+                id: ev_battery_assist_entry
+              - condition: state
+                entity_id: switch.peblar_ev_charger_charge
+                state: "off"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "single_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: >
+                            {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                            {{ ma if ma >= 6000 else 6000 }}
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "three_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: 6000
+                      - action: switch.turn_off
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
+          # Phase recovery for battery_assist: fires after ev_battery_assist_phase_recovery
+          # trigger (phase mode non-stop for 30 s). Handles the case where
+          # ev_battery_assist_entry fired while phase mode was still stop, and
+          # also re-arms the charger after each overflow-guard cycle resets phase mode.
+          - conditions:
+              - condition: trigger
+                id: ev_battery_assist_phase_recovery
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state: "battery_assist"
+              - condition: state
+                entity_id: switch.peblar_ev_charger_charge
+                state: "off"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "single_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: >
+                            {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                            {{ ma if ma >= 6000 else 6000 }}
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
+                  - conditions:
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "three_phase"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+                        data:
+                          value: 6000
+                      - action: switch.turn_off
+                        target:
+                          entity_id: switch.peblar_ev_charger_force_single_phase
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.peblar_ev_charger_charge
 
   - id: ev_solar_dynamic_power_control
     alias: "EV Solar Dynamic Power Control"
