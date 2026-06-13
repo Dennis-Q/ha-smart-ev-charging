@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.4] – 2026-06-13
+
+### Added
+- **Battery assist phase recovery** — new `ev_battery_assist_phase_recovery` trigger detects
+  when `battery_assist` mode is active but the charger is off due to a temporary phase-mode
+  `stop`. Re-evaluates phase mode and restarts the charger once conditions allow, without
+  waiting for the next full mode cycle.
+- **Notification automations list on dashboard** — auto-entities card in the dashboard now
+  lists all `automation.ev_notify_*` entries for easy enable/disable.
+
+### Changed
+- **`ev_solar_viable` threshold lowered to 100 W** and decoupled from
+  `ev_solar_min_charge_threshold_w` — the viable gate now uses a fixed 100 W floor so it
+  opens as soon as panels produce anything meaningful, independent of the minimum charge
+  current setting.
+
+### Fixed
+- **Notify validator** — rewritten to use `startswith('notify.')` prefix check instead of
+  a states lookup; fixes false positives and corrects `available_notify_entities` attribute.
+- **Logbook/recorder exclusions** — high-frequency control-loop entities
+  (`automation.ev_solar_dynamic_power_control`, `number.peblar_ev_charger_charge_current_limit_ma`,
+  `sensor.ev_grid_excess_power_smoothed`) excluded from logbook and/or recorder to reduce
+  database noise (~44 K writes/day for smoothed sensor alone). `install.sh` updated with
+  `modbus` logbook domain exclusion reminder.
+
 ## [0.2.3] – 2026-06-10
 
 ### Added
