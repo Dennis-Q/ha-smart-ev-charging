@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.6] – 2026-06-20
+
+### Added
+- **Unexpected charging detection** — new `binary_sensor.ev_unexpected_grid_charging` (delay_on 5 min) detects two anomaly classes: (1) charger drawing > 300 W while `ev_charging_mode` is `none`; (2) charger drawing > 300 W with > 500 W grid import while in `solar` or `battery_assist` mode (control loop not regulating). Suppressed automatically when `input_boolean.ev_manual_override` is on. Two new automations: `ev_notify_unexpected_grid_charging` fires push + persistent HA notification on turn-on (persistent stays until manually dismissed, for overnight visibility); `ev_notify_unexpected_grid_charging_resolved` fires push-only when the condition clears (skipped if manual override caused the clearance).
+
 ## [0.2.5] – 2026-06-20
 
 ### Fixed
