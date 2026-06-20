@@ -711,6 +711,12 @@ template:
         unit_of_measurement: "mA"
         state: "{{ states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) }}"
         set_value:
+          # Guard: do not write if charging is off (switch state = off means
+          # register 40000 = 0). Without this, ev_solar_dynamic_power_control
+          # writing 6000 mA would immediately re-enable charging after
+          # switch.turn_off wrote 0 to the same register.
+          - condition: template
+            value_template: "{{ is_state('switch.peblar_ev_charger_charge', 'on') }}"
           - service: modbus.write_register
             data:
               hub: peblar

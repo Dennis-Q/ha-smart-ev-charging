@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.5] – 2026-06-20
+
+### Fixed
+- **Charger not stopping after solar mode cleanup** — `number.peblar_ev_charger_charge_current_limit_ma` now has the same write guard as `number.peblar_ev_charger_charge_limit`: it refuses to write when `switch.peblar_ev_charger_charge` is off. Previously, `ev_solar_dynamic_power_control` wrote 6000 mA every 3 s (correct ramp-down during the stop countdown), but after `ev_solar_charge_mode_control` called `switch.turn_off` the same 3-second tick immediately overwrote the 0 on Modbus register 40000 with 6000, re-enabling charging. The guard closes this race without affecting the ramp-down behaviour.
+
 ## [0.2.4] – 2026-06-13
 
 ### Added
