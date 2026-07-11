@@ -409,10 +409,23 @@ automation:
             state: "battery_assist"
     actions:
       - choose:
-          # Stop
+          # Stop — solar mode only. In battery_assist the home battery side is
+          # the authority on when to push: excess collapses to ~0 whenever it
+          # abstains (e.g. HBA's "waiting for EV" state while the charger needs
+          # a tag scan or the car paused itself). The charger must stay armed in
+          # that state so the car can resume drawing (tag scan, limit raised) —
+          # that draw is the very signal that wakes the battery side back up.
+          # An armed charger with a suspended car draws 0 W, so leaving it on is
+          # harmless. When assist ends, ev_charging_mode leaves battery_assist
+          # and the generic mode control (mode 'none') stops the charger.
           - conditions:
               - condition: trigger
                 id: ev_stop
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: sensor.ev_charging_mode
+                    state: "battery_assist"
             sequence:
               - action: switch.turn_off
                 target:
@@ -454,11 +467,16 @@ automation:
           # Mode entry cleanup: charger was left on by window/cheapest and
           # phase mode is already stop — turn off without waiting for a
           # phase-mode state change that will never come.
+          # Solar mode only: in battery_assist the charger stays armed even at
+          # phase mode 'stop' (see the ev_stop branch comment above).
           - conditions:
               - condition: trigger
                 id: ev_mode_entry
             sequence:
               - if:
+                  - condition: state
+                    entity_id: sensor.ev_charging_mode
+                    state: "solar"
                   - condition: state
                     entity_id: sensor.ev_optimal_charging_phase_mode
                     state: "stop"

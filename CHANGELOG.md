@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.8] – 2026-07-11
+
+### Fixed
+- **battery_assist: charger stays armed when the battery side stops pushing** — the
+  `ev_stop` branch of `ev_solar_charge_mode_control` (and the mode-entry cleanup) no longer
+  turn off `switch.peblar_ev_charger_charge` while in `battery_assist` mode. In that mode
+  the home battery system is the authority on when to push power; excess collapses to ~0
+  whenever it abstains — e.g. HBA's new "waiting for EV" state while the charger needs a
+  tag scan or the car paused itself. Disarming the charger there created a deadlock:
+  the car could never resume drawing, so the battery side could never see it resume.
+  Observed live 2026-07-11 22:17 (charge switch turned off 3 min into a waiting period).
+  An armed charger with a suspended car draws 0 W; assist end still stops the charger via
+  the generic mode control when `ev_charging_mode` returns to `none`.
+
 ## [0.2.7] – 2026-07-11
 
 ### Fixed
