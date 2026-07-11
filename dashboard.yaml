@@ -403,9 +403,13 @@ views:
               Falls back to sun elevation > 5° when both are empty.
 
               **Home battery power entity**: Bidirectional battery power
-              (positive = charging, negative = discharging). Adds the
-              charging component back into the grid excess calculation so
-              solar absorbed by home batteries is visible to the EV charger.
+              (positive = discharging to the home/grid, negative = charging).
+              The charging component is added back into the grid excess
+              calculation so solar absorbed by home batteries stays visible
+              to the EV charger; the discharging component is subtracted in
+              every mode except battery assist, so battery power exported to
+              the grid (e.g. a sell-to-grid strategy) is never mistaken for
+              solar surplus.
               Example: `sensor.hba_total_battery_power`
 
               **Battery assist active entity**: Binary sensor published by

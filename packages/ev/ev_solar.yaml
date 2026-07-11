@@ -42,10 +42,13 @@ input_text:
 
   # ev_home_battery_power_entity
   #   Net battery power from a home battery system in W (bidirectional:
-  #   positive = charging, negative = discharging).
-  #   When set, ev_grid_excess_power adds back the positive (charging)
-  #   component, so solar surplus absorbed by home batteries becomes visible
-  #   to the EV charger. Leave empty without a home battery.
+  #   positive = discharging to the home/grid, negative = charging).
+  #   When set, ev_grid_excess_power adds the charging component back
+  #   (solar surplus absorbed by home batteries becomes visible to the EV
+  #   charger) and subtracts the discharging component in every mode except
+  #   battery_assist — so battery power being exported (e.g. a sell-to-grid
+  #   strategy) never masquerades as solar surplus. Leave empty without a
+  #   home battery.
   #   Example (HBA / Marstek): sensor.hba_total_battery_power
   ev_home_battery_power_entity:
     name: "EV Home battery power entity"
@@ -84,6 +87,17 @@ template:
       # Expects sensor.electricity_meter_power_consumption and _production in W.
       # See binary_sensor.ev_p1_unit_mismatch — it turns ON when either sensor
       # reports a unit other than W, which will produce wrong results here.
+      #
+      # Home battery handling (when ev_home_battery_power_entity is set;
+      # convention: positive = discharging, negative = charging):
+      #   - the charging component is added back, so surplus the battery
+      #     absorbs stays visible to the EV charger
+      #   - the discharging component is subtracted in every mode except
+      #     battery_assist, so battery power flowing to the grid (e.g. the
+      #     battery system selling at expensive hours) is never mistaken for
+      #     solar surplus. The subtraction is self-consistent even when the
+      #     battery system regulates grid power with a PID: the value always
+      #     converges to the true solar surplus (production minus house load).
       - name: "EV Grid Excess Power"
         unique_id: ev_grid_excess_power
         unit_of_measurement: "W"
@@ -96,8 +110,10 @@ template:
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
+          {% set batt_charge = [-(batt_power), 0] | max %}
+          {% set batt_discharge = 0 if is_state('sensor.ev_charging_mode', 'battery_assist') else [batt_power, 0] | max %}
           {% set current_power = grid_export - grid_import %}
-          {% set excess = current_power + charger_power + [-(batt_power), 0] | max - buffer %}
+          {% set excess = current_power + charger_power + batt_charge - batt_discharge - buffer %}
           {{ excess | round(0) }}
 
       # Calculate available charging amps for SINGLE PHASE.
