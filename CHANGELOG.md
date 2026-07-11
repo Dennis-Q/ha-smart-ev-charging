@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.7] – 2026-07-11
+
+### Fixed
+- **Home battery discharge no longer masquerades as solar surplus** —
+  `sensor.ev_grid_excess_power` now subtracts the battery *discharging* component in every
+  mode except `battery_assist`. Previously only the charging component was handled (added
+  back), so when a home battery system exported to the grid (e.g. a sell-at-expensive-hours
+  strategy), the export was indistinguishable from solar surplus and could start/sustain a
+  solar-mode charging session on battery power. Verified against production recorder data:
+  battery-only discharge briefly pushed the old excess above the 1380 W start threshold and
+  flipped `ev_optimal_charging_phase_mode` out of `stop`; the corrected value stays negative.
+  In `battery_assist` mode the subtraction is bypassed (consuming battery power is the point),
+  confirmed byte-identical against a recorded full assist session. The corrected excess always
+  converges to the true solar surplus (production − house load), even when the battery system
+  regulates grid power with a PID.
+- **Sign convention documentation** — the `ev_home_battery_power_entity` helper comment and
+  the dashboard settings markdown said "positive = charging"; the code (and the suggested
+  `sensor.hba_total_battery_power`) use positive = discharging. Docs corrected to match the
+  code.
+
 ## [0.2.6] – 2026-06-20
 
 ### Added
