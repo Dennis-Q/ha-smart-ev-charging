@@ -308,9 +308,12 @@ template:
       # delay_off: survives the 1p→3p switchover dip and brief cloud edges,
       # answering the "what if it quickly swaps?" concern — the battery side
       # sees transitions minutes apart at worst.
-      # Note: with delay_off configured the sensor reads 'unknown' for the
-      # first delay_off period after HA (re)start — consumers treating only
-      # 'on' as saturated (HBA does) fail safe during that window.
+      # Restart behaviour (measured in production 2026-07-12): the sensor
+      # restores its pre-restart state. A stale restored 'on' takes
+      # ~delay_off + integration startup (≈4 min) to release; a brand-new
+      # entity reads 'unknown' for the first delay_off. Consumers treating
+      # only 'on' as saturated (HBA does) are exposed to at most that stale
+      # window after a reboot — accepted as bounded and self-correcting.
       # Consumed by HBA via input_text.hba_strategy_ev_saturated_entity_id to
       # gate "Charge PV during EV charge": the batteries only absorb residual
       # surplus while the charger is a constant load, never while it is
