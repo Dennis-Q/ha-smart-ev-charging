@@ -390,6 +390,9 @@ views:
               - entity: binary_sensor.ev_solar_viable
                 name: Solar viable (status)
                 icon: mdi:solar-power
+              - entity: binary_sensor.ev_charger_saturated
+                name: Charger saturated (status)
+                icon: mdi:car-speed-limiter
               - entity: binary_sensor.ev_power_entity_unit_mismatch
                 name: Unit mismatch (status)
           - type: markdown
