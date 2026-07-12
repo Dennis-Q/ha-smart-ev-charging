@@ -297,6 +297,11 @@ template:
       #      reports min(commanded, externally available) — when it drops below
       #      what we command, CT/household load balancing (or another charger
       #      constraint) is the binding limit and surplus will go unconsumed.
+      #      The actual sensor is quantized to whole amps while the commanded
+      #      limit is mA-fine, so the comparison floors the commanded value to
+      #      whole amps first — otherwise ordinary regulation (e.g. commanded
+      #      6350 mA, actual 6 A) reads as a permanent phantom derate. A
+      #      genuine load-balancing derate is ≥ 1 A, so nothing real is lost.
       # Known blind spot (accepted): a current cap set inside the car is
       # invisible to the charger, so neither term fires for it.
       # delay_on: saturation must be sustained, not a ramp overshoot;
@@ -319,7 +324,7 @@ template:
           {#- actual reports in A; tolerate a mA-reporting variant by scale-detecting -#}
           {%- set actual_ma = actual * 1000 if 0 <= actual < 100 else actual -%}
           {%- set pinned = cmd_ma >= 15900 -%}
-          {%- set derated = actual_ma >= 0 and actual_ma < cmd_ma - 200 -%}
+          {%- set derated = actual_ma >= 0 and actual_ma < (cmd_ma // 1000) * 1000 -%}
           {{ charging and (pinned or derated) }}
         delay_on: "00:01:30"
         delay_off: "00:03:00"
