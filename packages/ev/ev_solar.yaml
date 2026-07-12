@@ -286,6 +286,44 @@ template:
         delay_on: "00:02:00"
         delay_off: "00:05:00"
 
+      # ON when the charger cannot take more power than it currently delivers —
+      # the "sink is saturated" signal for home battery coordination.
+      # Two saturation causes, OR'ed:
+      #   1. Pinned: the commanded current limit is at the 16 A maximum. This
+      #      covers 16 A single-phase, 16 A three-phase, AND the phase-switch
+      #      hysteresis band (surplus above 1-phase capacity but below the
+      #      3-phase switch threshold, where the charger sits pinned at 16 A/1p).
+      #   2. Derated: sensor.peblar_ev_charger_charge_current_limit_actual
+      #      reports min(commanded, externally available) — when it drops below
+      #      what we command, CT/household load balancing (or another charger
+      #      constraint) is the binding limit and surplus will go unconsumed.
+      # Known blind spot (accepted): a current cap set inside the car is
+      # invisible to the charger, so neither term fires for it.
+      # delay_on: saturation must be sustained, not a ramp overshoot;
+      # delay_off: survives the 1p→3p switchover dip and brief cloud edges,
+      # answering the "what if it quickly swaps?" concern — the battery side
+      # sees transitions minutes apart at worst.
+      # Note: with delay_off configured the sensor reads 'unknown' for the
+      # first delay_off period after HA (re)start — consumers treating only
+      # 'on' as saturated (HBA does) fail safe during that window.
+      # Consumed by HBA via input_text.hba_strategy_ev_saturated_entity_id to
+      # gate "Charge PV during EV charge": the batteries only absorb residual
+      # surplus while the charger is a constant load, never while it is
+      # actively regulating — the two control loops cannot fight.
+      - name: "EV Charger Saturated"
+        unique_id: ev_charger_saturated
+        state: >-
+          {%- set charging = is_state('binary_sensor.ev_is_charging', 'on') -%}
+          {%- set cmd_ma = states('number.peblar_ev_charger_charge_current_limit_ma') | float(0) -%}
+          {%- set actual = states('sensor.peblar_ev_charger_charge_current_limit_actual') | float(-1) -%}
+          {#- actual reports in A; tolerate a mA-reporting variant by scale-detecting -#}
+          {%- set actual_ma = actual * 1000 if 0 <= actual < 100 else actual -%}
+          {%- set pinned = cmd_ma >= 15900 -%}
+          {%- set derated = actual_ma >= 0 and actual_ma < cmd_ma - 200 -%}
+          {{ charging and (pinned or derated) }}
+        delay_on: "00:01:30"
+        delay_off: "00:03:00"
+
       # ON when a configured solar or home battery power entity reports in kW
       # instead of W. All EV charging calculations expect W; kW input will
       # produce results roughly 1000× too small, silently breaking regulation.

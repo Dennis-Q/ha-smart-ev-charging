@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.9] – 2026-07-12
+
+### Added
+- **`binary_sensor.ev_charger_saturated`** — ON when the charger cannot take more power
+  than it currently delivers: commanded current limit pinned at the 16 A maximum (covers
+  1-phase max, 3-phase max, and the phase-switch hysteresis band), OR
+  `charge_current_limit_actual` (= min(commanded, externally available)) dropping below the
+  commanded value, meaning CT/household load balancing is the binding constraint.
+  `delay_on` 1:30 / `delay_off` 3:00 provide hysteresis so downstream consumers see
+  transitions minutes apart at worst. Built for home battery coordination: point HBA's
+  `input_text.hba_strategy_ev_saturated_entity_id` at this sensor so "Charge PV during EV
+  charge" only runs while the charger is a constant load (genuinely unconsumable surplus)
+  and never competes with the charger's own regulation. Known blind spot: a current cap
+  configured inside the car is invisible to the charger and does not trigger the sensor.
+
 ## [0.2.8] – 2026-07-11
 
 ### Fixed
