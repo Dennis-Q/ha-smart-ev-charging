@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.10] – 2026-07-12
+
+### Fixed
+- **`ev_charger_saturated` false positive during ordinary regulation** — the derated term
+  compared the mA-fine commanded limit against `charge_current_limit_actual` with only a
+  200 mA margin, but the actual sensor is quantized to whole amps: commanded 6350 mA with
+  actual 6 A read as a permanent phantom derate, keeping the sensor `on` while the charger
+  was regulating normally (observed live at 1460 W / ~6.3 A). The commanded value is now
+  floored to whole amps before the comparison; a genuine load-balancing derate is ≥ 1 A,
+  so no real derating is missed.
+
 ## [0.2.9] – 2026-07-12
 
 ### Added
