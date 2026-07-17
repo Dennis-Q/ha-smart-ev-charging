@@ -194,17 +194,16 @@ re-enabling charging permanently (the rewrite keeps the poll reading ≥ 6000,
 so the stale guard never corrects itself).
 
 `switch.peblar_ev_charger_charge` `turn_off` therefore delegates to the
-internal `script.peblar_ev_charger_stop`, which suppresses mA writes while it
-runs, drains in-flight writes for 4 s, writes 0, and requires the switch to
+internal `script.peblar_ev_charger_stop`, which writes the 0 immediately,
+suppresses mA writes for the rest of its run, and requires the switch to
 read `off` sustained for 4 s before declaring success — retrying up to
 3 times and sending a high-priority notification if the charger never
 confirms (~30 s worst case).
 
-Behavioural consequence: **turning the switch off takes effect after ~4 s
-and the switch reads `off` a poll later (~5–6 s total)**. The UI toggle may
-briefly snap back to `on` in the meantime. Turning the switch on cancels a
-pending stop (the later command wins). Do not call the script directly —
-toggle the switch.
+Behavioural notes: the charger stops immediately and the switch reads `off`
+one poll later (~1–2 s); **confirmation** (and thus the end of the mA-write
+suppression) takes ~10 s. Turning the switch on cancels a pending stop (the
+later command wins). Do not call the script directly — toggle the switch.
 
 ---
 
