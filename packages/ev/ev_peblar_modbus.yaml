@@ -704,10 +704,11 @@ template:
         # retried stop that suppresses concurrent mA writes while it runs
         # (see the script definition below for the full rationale). Invoked
         # fire-and-forget via script.turn_on so this action returns
-        # immediately; the register gets its 0 after the script's 4 s drain
-        # delay and the switch reads 'off' one poll later (~5-6 s total).
-        # A plain 0-write here raced ev_solar_dynamic_power_control and could
-        # leave the charger permanently re-enabled (production 2026-07-16).
+        # immediately; the script writes the 0 as its first step, so the
+        # charger stops right away and the switch reads 'off' one poll later
+        # (~1-2 s). A plain 0-write here raced ev_solar_dynamic_power_control
+        # and could leave the charger permanently re-enabled (production
+        # 2026-07-16).
         turn_off:
           - service: script.turn_on
             target:
@@ -855,8 +856,9 @@ input_number:
 #   1. is 'on' while running (including during delays) — the
 #      number.set_value guard refuses mA writes for that whole window,
 #      based on synchronous HA state instead of the lagging poll;
-#   2. waits out one solar-loop period (4 s > 3 s) before writing 0, so
-#      any write already dispatched lands BEFORE the 0, never after;
+#   2. writes 0 immediately (instant stop), then waits out one solar-loop
+#      period (4 s > 3 s) with suppression active before assessing the
+#      result, so the confirmation cannot be fooled by an in-flight write;
 #   3. confirms the stop stuck — switch 'off' held ≥ 4 s (≈ 4 consistent
 #      polls, filtering phantom 'off' from a failed poll read where the
 #      actual-limit sensor goes unavailable → float(0) → template renders
@@ -880,14 +882,31 @@ script:
     mode: single
     max_exceeded: silent
     sequence:
-      # Drain: mA writes are suppressed from this point on (script state is
-      # 'on'), so after one full loop period nothing can be in flight.
+      # Immediate stop: the 0 reaches the charger right away — suppression
+      # (script state 'on') is live milliseconds before this write, so only
+      # a write whose guard evaluated in the instant before the script
+      # started can still land after it. If that happens, the confirm loop
+      # below detects and heals it (at the cost of one extra off→on→off
+      # transition pair against the charger's toggle budget — accepted:
+      # ms-scale window vs the 3 s loop period, and the worst outcome, a
+      # 10400 rate-limit pause, coincides with wanting the charger off).
+      # Direct register write — switch.turn_off would recurse into this
+      # script.
+      - service: modbus.write_register
+        data:
+          hub: peblar
+          address: 40000
+          slave: 1
+          value:
+            - 0
+            - 0
+      # Drain: one full loop period with suppression active, so by the time
+      # the confirm loop assesses the result, nothing can be in flight. The
+      # charger is already stopped while this runs — no UX cost.
       - delay:
           seconds: 4
       - repeat:
           sequence:
-            # Direct register write — switch.turn_off would recurse into
-            # this script.
             - service: modbus.write_register
               data:
                 hub: peblar

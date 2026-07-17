@@ -14,15 +14,15 @@ All notable changes to this project will be documented here.
   itself (observed: automated stop at mode entry and a manual toggle both lost this
   race; only a lucky-timed second manual toggle broke the livelock).
   `switch.peblar_ev_charger_charge` `turn_off` now delegates to the internal
-  `script.peblar_ev_charger_stop`: mA writes are suppressed while it runs (script run
-  state is synchronous — no poll lag), a 4 s drain lets in-flight writes land before
-  the 0-write, and the stop is only declared done once the switch reads `off`
+  `script.peblar_ev_charger_stop`: the 0 is written immediately (instant stop), mA
+  writes are suppressed for the whole script run (script run state is synchronous —
+  no poll lag), and the stop is only declared done once the switch reads `off`
   sustained for 4 s (filters phantom `off` from a failed poll), retrying up to 3×
   and notifying (ungated, high priority) if the charger never confirms. On failure the
   script exits so regulation degrades to minimum current instead of wedging.
   `turn_on` cancels a pending stop (later command wins). Re-writing 0 does not touch
-  the 3-toggles/10-min budget — register writes are not rate-limited. Behavioural
-  note: turning the charge switch off now takes effect after ~4 s (see
+  the 3-toggles/10-min budget — register writes are not rate-limited. Confirmation
+  (and the end of write suppression) takes ~10 s after the toggle (see
   MODBUS-README.md, "Confirmed stop").
 
 ## [0.2.10] – 2026-07-12
