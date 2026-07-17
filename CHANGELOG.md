@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.11] – 2026-07-17
+
+### Fixed
+- **Modbus variant: charger could re-enable itself right after a stop** (production
+  incident 2026-07-16). Register 40000 is both the on/off control and the mA setpoint,
+  and the charge switch state mirrors a register polled at 1 s. A stop's 0-write could
+  be followed within 1–2 s by a 6000 mA write from `ev_solar_dynamic_power_control`
+  whose guard had passed on the stale `on` state — re-enabling charging *permanently*,
+  because the rewrite keeps the poll reading ≥ 6000 so the stale guard never corrects
+  itself (observed: automated stop at mode entry and a manual toggle both lost this
+  race; only a lucky-timed second manual toggle broke the livelock).
+  `switch.peblar_ev_charger_charge` `turn_off` now delegates to the internal
+  `script.peblar_ev_charger_stop`: mA writes are suppressed while it runs (script run
+  state is synchronous — no poll lag), a 4 s drain lets in-flight writes land before
+  the 0-write, and the stop is only declared done once the switch reads `off`
+  sustained for 4 s (filters phantom `off` from a failed poll), retrying up to 3×
+  and notifying (ungated, high priority) if the charger never confirms. On failure the
+  script exits so regulation degrades to minimum current instead of wedging.
+  `turn_on` cancels a pending stop (later command wins). Re-writing 0 does not touch
+  the 3-toggles/10-min budget — register writes are not rate-limited. Behavioural
+  note: turning the charge switch off now takes effect after ~4 s (see
+  MODBUS-README.md, "Confirmed stop").
+
 ## [0.2.10] – 2026-07-12
 
 ### Fixed

@@ -98,7 +98,7 @@ automations and dashboard cards work without changes.
 
 | Entity | Purpose |
 |---|---|
-| `switch.peblar_ev_charger_charge` | On = charging allowed; off writes 0 mA to the setpoint register |
+| `switch.peblar_ev_charger_charge` | On = charging allowed; off runs a confirmed stop (see [Confirmed stop](#confirmed-stop-turn_off-is-eventually-consistent)) |
 | `switch.peblar_ev_charger_force_single_phase` | On = force L1-only charging; off = 3-phase allowed |
 
 ### Numbers (charge limit)
@@ -185,13 +185,38 @@ transitions.
 
 ---
 
+## Confirmed stop (turn_off is eventually consistent)
+
+Register 40000 is both the on/off control (0 = off) and the mA setpoint, and
+the switch state mirrors a register polled at 1 s — so a plain 0-write could
+race a concurrent mA write whose guard still read the stale `on` state,
+re-enabling charging permanently (the rewrite keeps the poll reading ≥ 6000,
+so the stale guard never corrects itself).
+
+`switch.peblar_ev_charger_charge` `turn_off` therefore delegates to the
+internal `script.peblar_ev_charger_stop`, which suppresses mA writes while it
+runs, drains in-flight writes for 4 s, writes 0, and requires the switch to
+read `off` sustained for 4 s before declaring success — retrying up to
+3 times and sending a high-priority notification if the charger never
+confirms (~30 s worst case).
+
+Behavioural consequence: **turning the switch off takes effect after ~4 s
+and the switch reads `off` a poll later (~5–6 s total)**. The UI toggle may
+briefly snap back to `on` in the meantime. Turning the switch on cancels a
+pending stop (the later command wins). Do not call the script directly —
+toggle the switch.
+
+---
+
 ## Internal backing entities (not for direct use)
 
-The following sensors read raw Modbus register values and back the
-user-facing template entities above. They are excluded from the recorder.
+The following entities back the user-facing template entities above. The
+sensors read raw Modbus register values and are excluded from the recorder.
 Do not use them directly in automations — use the template entities instead.
 
 `sensor.peblar_ev_charger_charge_current_limit_raw`,
 `…force_single_phase_raw`, `…charge_current_limit_actual`,
 `…cp_state_raw`, `…lock_state_raw`, `…limit_source_raw`,
-`…alive_timeout_raw`, `…fallback_current_raw`, `…uptime_raw`
+`…alive_timeout_raw`, `…fallback_current_raw`, `…uptime_raw`,
+`script.peblar_ev_charger_stop` (confirmed stop behind the charge switch —
+see above)
