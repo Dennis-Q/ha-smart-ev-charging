@@ -13,6 +13,24 @@ All notable changes to this project will be documented here.
   the boolean off, and notifies. The 8-hour timeout and reach-limit auto-disables remain
   as backstops. Permanent force charge is unaffected.
 
+## [0.2.13] – 2026-07-24
+
+### Fixed
+- **Charger could resume on the next plug-in after a mode ended while disconnected.**
+  The charge switch (Modbus reg 40000) is a persistent latch, and
+  `ev_generic_charging_mode_control` stops it on `ev_charging_mode → none` — but that
+  automation was gated entirely on `binary_sensor.ev_is_connected` being `on`, so when a
+  mode turned to `none` while the cable was out (one-time force cleared on unplug,
+  permanent force toggled off, or any mode disabled while disconnected), the stop was
+  skipped and the switch stayed armed at its last mA. Re-plugging then resumed charging
+  with no active mode. The "car connected" gate now lives on the *start* branch only
+  (`mode_full_power`) — starting still requires a connected car — while the stop branch
+  (`mode_none`) runs regardless of plug state, so the switch is never left armed across a
+  disconnect. Fix is mode-agnostic: it covers one-time force, permanent force, and any
+  other mode ending while unplugged. `solar` is unaffected (not a trigger of this
+  automation; `ev_solar.yaml` drives it and delegates its final stop to this `none`
+  branch).
+
 ## [0.2.11] – 2026-07-17
 
 ### Fixed
