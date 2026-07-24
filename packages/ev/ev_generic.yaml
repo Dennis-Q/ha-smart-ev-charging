@@ -822,18 +822,25 @@ automation:
         # not_from:
         #   - "unknown"
         #   - "unavailable"
-    conditions: # some disabled for testing?
+    # Note: the "car connected" gate lives on the start branch only, NOT here.
+    # Stopping the charger must run even while disconnected — otherwise a mode
+    # that turns to 'none' while the cable is out (one-time force cleared on
+    # unplug, permanent force toggled off, any mode disabled while unplugged)
+    # leaves switch.peblar_ev_charger_charge armed at its last mA, and the car
+    # resumes charging on the next plug-in with no active mode.
+    conditions:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
-      - condition: state # do not use as this causes things not to work!
-        entity_id: binary_sensor.ev_is_connected
-        state: "on"
     actions:
       - choose:
           - conditions:
               - condition: trigger
                 id: mode_full_power
+              # Only start charging when a car is actually connected.
+              - condition: state
+                entity_id: binary_sensor.ev_is_connected
+                state: "on"
             sequence:
               - action: number.set_value # maximize power
                 target:
@@ -849,6 +856,9 @@ automation:
           - conditions:
               - condition: trigger
                 id: mode_none
+            # No connection gate: stop regardless of plug state so the charge
+            # switch is never left armed across a disconnect (re-writing 0 is
+            # toggle-budget-free; harmless when no car is present).
             sequence:
               - action: switch.turn_off # Stop charging if no mode is selected
                 target:
