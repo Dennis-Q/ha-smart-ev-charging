@@ -530,6 +530,39 @@ automation:
           color: green
           priority: high
 
+  # Auto-disable force charge (once) when the cable is unplugged.
+  # Makes one-time force charging truly one-time: the session ends on
+  # disconnect, not just on the 8-hour timeout or reaching the limit.
+  # The 1-minute `for:` debounce absorbs transient unavailable/unknown
+  # reads (ev_is_connected is off for those too), so a brief integration
+  # blip does not end the session. Permanent force charge is unaffected.
+  - id: "ev_force_charge_once_disable_on_disconnect"
+    alias: "EV Force Charge (Once) Auto Disable on Disconnect"
+    description: "Disable one-time force charge when the cable is disconnected"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        to: "off"
+        for:
+          minutes: 1
+    conditions:
+      - condition: state
+        entity_id: input_boolean.ev_force_charge_once
+        state: "on"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.ev_force_charge_once
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV Force Charge Ended (one-time)"
+          message: "Cable disconnected — one-time force charging disabled"
+          tag: ev_force_disconnect
+          color: orange
+          priority: high
+
   # Activate permanent force charging
   - id: "ev_force_charge_permanent_activate"
     alias: "EV Force Charge Permanent - Activate"

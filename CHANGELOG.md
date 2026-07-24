@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.12] – 2026-07-24
+
+### Added
+- **One-time force charge now ends on disconnect** — `input_boolean.ev_force_charge_once`
+  auto-disables when the cable is unplugged, making it truly one-time rather than
+  "until the 8-hour timeout." New automation `ev_force_charge_once_disable_on_disconnect`
+  triggers on `binary_sensor.ev_is_connected` going `off` for 1 minute (the debounce
+  absorbs transient unavailable/unknown reads, which also flip that sensor off), turns
+  the boolean off, and notifies. The 8-hour timeout and reach-limit auto-disables remain
+  as backstops. Permanent force charge is unaffected.
+
 ## [0.2.11] – 2026-07-17
 
 ### Fixed
