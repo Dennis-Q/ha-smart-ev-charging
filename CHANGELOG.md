@@ -31,6 +31,39 @@ All notable changes to this project will be documented here.
   automation; `ev_solar.yaml` drives it and delegates its final stop to this `none`
   branch).
 
+## [0.2.14] – 2026-07-26
+
+### Fixed
+- **Tariff modes never started when the mode armed before the car was plugged in**
+  (production incident 2026-07-26). `ev_generic_charging_mode_control` could only act on
+  a *change* of `sensor.ev_charging_mode`, so a `force`/`cheapest`/`window` mode that
+  became active while the cable was out was never applied when the car arrived: the
+  mode-change trigger had already fired and no-oped on the connection gate, and plugging
+  in produced no further trigger. On 2026-07-26 the mode went to `cheapest` at 14:56 with
+  the car away, the car was plugged in at 15:04, and the charger sat idle through the
+  cheapest hour of the day (€0.0558/kWh) until it was started by hand at 17:15 — 2 h 11 m
+  lost. New `connected` trigger on `binary_sensor.ev_is_connected → on` (30 s settle)
+  re-evaluates on plug-in; the start branch now also asserts `ev_charging_mode` is one of
+  `force`/`cheapest`/`window`, so a plug-in during `solar`, `battery_assist` or `none`
+  still starts nothing. `solar` never had this bug because it re-evaluates continuously
+  via `ev_optimal_charging_phase_mode`; the tariff modes have no such heartbeat.
+
+- **Solar loop regulated the charger with no car attached.** Nothing in the solar chain
+  checked the plug: `ev_charging_mode` goes to `solar` on `ev_solar_viable` alone (sun/PV,
+  not the car), and `ev_optimal_charging_phase_mode` is pure arithmetic on excess vs the
+  thresholds. Both `ev_solar_charge_mode_control` and `ev_solar_dynamic_power_control`
+  now require `binary_sensor.ev_is_connected` to be `on`. Previously the loop tracked
+  surplus all day with an empty cable — on 2026-07-26, ~19 charge-switch toggles and mA
+  writes every 3 s between 08:45 (unplug) and 15:04 (plug-in). Beyond the pointless
+  Modbus traffic, this made "is the switch armed at plug-in time" a coin flip decided by
+  cloud cover, which is what masked the trigger bug above: on 2026-07-24 the loop happened
+  to leave the switch armed at 16:49 and the car charged on plug-in with no automation
+  involvement, while on 2026-07-26 its last act before handing over to `cheapest` was a
+  stop at 14:54:24 (the home batteries tapering off shrank the `batt_charge` term below
+  `ev_solar_min_charge_threshold_w`). Stop actions are gated too: with no car there is
+  nothing to stop, and the `mode_none` branch of `ev_generic_charging_mode_control`
+  remains the unconditional disarm path across a disconnect (0.2.13).
+
 ## [0.2.11] – 2026-07-17
 
 ### Fixed
