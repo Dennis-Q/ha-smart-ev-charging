@@ -106,7 +106,17 @@ template:
         state: >
           {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
           {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
-          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(500) %}
+          {# Fall back to 0, not a guessed draw. charger_power is ADDED to excess
+             (it is what the charger is currently taking, which is available again
+             if we back off), so an over-stated default inflates excess and the
+             loop commands more current than the surplus supports — i.e. it pulls
+             from the grid, silently, for as long as the sensor is unavailable.
+             0 under-states excess instead, which makes the loop back off or stop:
+             the safe direction, and self-correcting once the sensor returns. The
+             previous default of 500 W was arbitrary and wrong in both directions
+             (a phantom 500 W with no car, ~4 kW short mid-session). Every other
+             read of this sensor in the package already defaults to 0. #}
+          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(0) %}
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}

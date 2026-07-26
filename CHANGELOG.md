@@ -64,6 +64,17 @@ All notable changes to this project will be documented here.
   nothing to stop, and the `mode_none` branch of `ev_generic_charging_mode_control`
   remains the unconditional disarm path across a disconnect (0.2.13).
 
+- **`ev_grid_excess_power` invented 500 W when the charger power sensor was
+  unavailable.** `charger_power` is *added* to excess (it is what the charger is
+  currently drawing, which becomes available again if the loop backs off), so an
+  over-stated fallback inflates excess and the loop commands more current than the
+  surplus supports — pulling from the grid, silently, for as long as the sensor is
+  unavailable. Now defaults to 0, which under-states excess instead and makes the loop
+  back off or stop: the safe direction, and self-correcting once the sensor returns. The
+  old 500 W was arbitrary and wrong in both directions — a phantom 500 W of surplus with
+  no car attached, and ~4 kW short mid-session. Every other read of this sensor in the
+  package already defaulted to 0.
+
 ## [0.2.11] – 2026-07-17
 
 ### Fixed
