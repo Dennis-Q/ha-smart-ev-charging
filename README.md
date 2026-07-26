@@ -45,6 +45,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-chargin
 To install from the `dev` branch or a specific release tag:
 
 ```sh
-EV_VERSION=dev bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/install.sh)
+EV_VERSION=dev bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/dev/install.sh)
 EV_VERSION=v1.0.0 bash <(curl -fsSL https://raw.githubusercontent.com/Dennis-Q/ha-smart-ev-charging/main/install.sh)
 ```
+
+Fetch `install.sh` from the **same ref** you are installing (note `dev/install.sh` above, not
+`main/install.sh`). `EV_VERSION` selects which ref the *package files* come from, but the
+installer itself is whatever you piped into bash — so mixing them runs an older installer
+against newer content. That matters whenever a release adds a package file: the installer
+carries the list of files to download, so an older one silently skips the new file and leaves
+you with a half-updated install. Release tags are self-consistent, so `main/install.sh` is
+correct for those.

@@ -31,6 +31,38 @@ All notable changes to this project will be documented here.
   automation; `ev_solar.yaml` drives it and delegates its final stop to this `none`
   branch).
 
+## [0.2.15] – 2026-07-26
+
+### Changed
+- **All notification logic moved to `packages/ev/ev_notifications.yaml`.** Pure file split —
+  no entity IDs, unique_ids, automation ids or behaviour changed, so nothing is renamed in the
+  entity registry and no reconfiguration is needed. Moved: `ev_notify_dispatch` and
+  `ev_notify_test` (scripts), and the nine notification-only automations —
+  `ev_notify_target_validation`, `ev_charging_complete_notification`,
+  `ev_charger_error_notification`, `ev_notify_charger_alert`, `ev_notify_unexpected_charging`,
+  `ev_notify_manual_override_reminder`, `ev_notify_unexpected_grid_charging` and
+  `_resolved` (from `ev_generic.yaml`), plus `ev_power_entity_unit_mismatch_notification`
+  (from `ev_solar.yaml`). `ev_generic.yaml` drops 377 lines, `ev_solar.yaml` 48.
+
+  Helpers and template sensors stay with their domain rather than following the automations:
+  `input_boolean.ev_notifications_enabled`, `input_text.ev_notify_entity_id` and
+  `binary_sensor.ev_notify_target_invalid` remain in `ev_generic.yaml`;
+  `binary_sensor.ev_power_entity_unit_mismatch` and `ev_p1_unit_mismatch` remain in
+  `ev_solar.yaml`. Automations that *act* and merely notify as a side effect also stay put —
+  notably `ev_validate_charging_limit`, which corrects the car's charge limit. This mirrors
+  `hba_notifications.yaml` in the sibling HBA project, which likewise holds only `automation:`
+  and `script:`.
+
+- **`install.sh` ships the new file** (added to `CORE_FILES`). Updating requires an installer
+  that knows about `ev_notifications.yaml`: an older one will overwrite `ev_generic.yaml` with
+  the stripped version and never fetch the new file, silently removing every notification
+  *and* `script.ev_notify_dispatch`, which several non-notification automations call.
+
+- **README: fetch `install.sh` from the ref you are installing.** The dev example now uses
+  `dev/install.sh` rather than `main/install.sh`. `EV_VERSION` selects the ref for the package
+  *files*, but the installer is whatever was piped into bash — mixing them runs an older
+  installer against newer content, which is exactly the failure mode above.
+
 ## [0.2.14] – 2026-07-26
 
 ### Fixed
