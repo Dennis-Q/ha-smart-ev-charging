@@ -440,6 +440,30 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
+      # Do not regulate a charger with no car on it. Nothing else in the solar
+      # chain checks the plug: ev_charging_mode goes to 'solar' on
+      # ev_solar_viable alone (sun/PV, not the car), and
+      # ev_optimal_charging_phase_mode is pure arithmetic on excess vs the
+      # thresholds. Without this gate the loop tracks surplus all day with an
+      # empty cable, toggling switch.peblar_ev_charger_charge as clouds pass.
+      # Observed 2026-07-26: ~19 toggles between 08:45 (unplug) and 15:04
+      # (plug-in).
+      #
+      # The real damage is that whether the switch is left armed or disarmed at
+      # plug-in time becomes a coin flip decided by cloud cover. On 2026-07-26
+      # the last act before handover to 'cheapest' was a stop at 14:54:24 —
+      # the home batteries tapering off shrank the batt_charge term below
+      # ev_solar_min_charge_threshold_w — and the charger stayed dead through
+      # the cheapest hour of the day. On 2026-07-24 the same loop happened to
+      # leave it armed at 16:49 and the car charged on plug-in with no
+      # automation involvement at all.
+      #
+      # Stop actions are gated too, deliberately: with no car connected there is
+      # nothing to stop, and ev_generic's mode_none branch remains the
+      # unconditional disarm path across a disconnect.
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
       - condition: or
         conditions:
           - condition: and
@@ -642,6 +666,13 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
+      # Same plug gate as the mode control above. The charge-switch condition
+      # below is not sufficient on its own: the switch can sit armed with no car
+      # attached (any stop path that fails to disarm, or a plug-out while on),
+      # and this automation then writes the mA register every 3 s indefinitely.
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
       - condition: or
         conditions:
           - condition: and

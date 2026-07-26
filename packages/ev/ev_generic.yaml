@@ -822,6 +822,22 @@ automation:
         # not_from:
         #   - "unknown"
         #   - "unavailable"
+      # Re-evaluate on plug-in. Without this the automation can only ever act on
+      # a *change* of ev_charging_mode, so a mode that armed while the cable was
+      # out is never applied when the car arrives: the mode-change trigger has
+      # already fired (and no-oped on the connection gate below), and plugging in
+      # produces no further trigger. Observed 2026-07-26 — mode went to 'cheapest'
+      # at 14:56 with the car away, car plugged in at 15:04, charger sat idle
+      # through the cheapest hour of the day until started by hand at 17:15.
+      # The solar path is not affected because it re-evaluates continuously via
+      # sensor.ev_optimal_charging_phase_mode; force/cheapest/window have no such
+      # heartbeat. 30 s settle matches the other triggers and lets the charger
+      # state sensor leave 'unknown' after the plug-in.
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        to: "on"
+        id: connected
+        for: "00:00:30"
     # Note: the "car connected" gate lives on the start branch only, NOT here.
     # Stopping the charger must run even while disconnected — otherwise a mode
     # that turns to 'none' while the cable is out (one-time force cleared on
@@ -836,11 +852,24 @@ automation:
       - choose:
           - conditions:
               - condition: trigger
-                id: mode_full_power
+                id:
+                  - mode_full_power
+                  - connected
               # Only start charging when a car is actually connected.
               - condition: state
                 entity_id: binary_sensor.ev_is_connected
                 state: "on"
+              # Required for the 'connected' trigger, which fires on plug-in
+              # regardless of mode: only the full-power modes start here. Solar
+              # and battery_assist are driven by ev_solar.yaml, and 'none' must
+              # not start anything. Redundant for the mode_full_power trigger,
+              # which already filters on these states.
+              - condition: state
+                entity_id: sensor.ev_charging_mode
+                state:
+                  - "force"
+                  - "cheapest"
+                  - "window"
             sequence:
               - action: number.set_value # maximize power
                 target:
