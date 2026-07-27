@@ -415,6 +415,54 @@ automation:
         for: "00:04:00" # was 5 but feels slow?
         # for: "00:00:50" # for testing
         id: ev_3p
+      # Leave 3-phase decisively. In 3-phase the floor is 6 A × 3 ≈ 4.1 kW; in
+      # 1-phase it is ≈ 1.38 kW. So once surplus falls short, staying in 3-phase
+      # costs ~2.7 kW of grid import while staying in 1-phase costs ~0 — the two
+      # cases deserve very different urgency, and 'stop' vs 'single_phase' is a
+      # far cheaper question than 'am I still in 3-phase'. Stepping down is
+      # therefore fast (60 s) while the stop decision stays lazy (ev_stop, 2 min)
+      # and is only ever taken from 1-phase, where being wrong is nearly free.
+      #
+      # Must be a template trigger, not `not_to: "three_phase"`. A state trigger's
+      # `for:` restarts on every state change that matches it, so a phase mode
+      # flapping single_phase↔stop resets the timer indefinitely — and because
+      # this automation is mode: restart, ev_stop and ev_1p also cancel each
+      # other on every flap. Observed on prod 2026-07-27: 4.1 kW with 2.4–3.0 kW
+      # grid import for 7 minutes, ended only by a manual force-1-phase. Both of
+      # those states mean the same thing here ("get out of 3-phase"), so the
+      # trigger tests that condition rather than the transitions; a template
+      # `for:` requires the *result* to hold, which it does across the flapping.
+      #
+      # Listing the states explicitly rather than `!= 'three_phase'` keeps
+      # unknown/unavailable from arming the charger (e.g. during startup, before
+      # the phase-mode sensor has a value).
+      #
+      # The charge-switch check is what keeps this a step-DOWN and never a start.
+      # It shares the ev_1p branch, which turns charging on — correct for ev_1p
+      # (that is how a solar session begins) but wrong here. Without it, sunrise
+      # reproduces: ev_charging_mode enters solar while the charger is still
+      # configured 3-phase from the evening before and phase mode is 'stop', so
+      # leave_3p would fire at +60 s and start charging into no surplus, and
+      # ev_mode_entry would only shut it off again at +2 min. Requiring an
+      # already-charging charger makes leave_3p a no-op there.
+      # ev_charging_mode is repeated here even though the automation's conditions
+      # already gate on it. A template trigger fires once on the false→true edge
+      # (after `for:`) and not again while it stays true, so a gate that lives
+      # only in `conditions:` can be missed entirely: the edge happens, the
+      # condition rejects it, and no second edge ever comes. Reproduced from prod
+      # 2026-07-26 — the template went true at 17:26:15 during a `cheapest`
+      # session, fired and was discarded at 17:27:15, and was still true when the
+      # mode handed over to `solar` at 18:00, so nothing re-triggered; the charger
+      # sat at the 3-phase floor importing 1.4–3.1 kW until ev_stop caught it 7
+      # minutes later. Including the mode makes the handover itself an edge.
+      - trigger: template
+        value_template: >
+          {{ is_state('switch.peblar_ev_charger_charge', 'on')
+             and is_state('switch.peblar_ev_charger_force_single_phase', 'off')
+             and states('sensor.ev_optimal_charging_phase_mode') in ['single_phase', 'stop']
+             and states('sensor.ev_charging_mode') in ['solar', 'battery_assist'] }}
+        for: "00:01:00"
+        id: leave_3p
       # Fires when mode enters solar/battery_assist while ev_optimal_charging_phase_mode
       # was already 'stop' (e.g. window→solar at sunrise before any production).
       # Same 2-minute delay as ev_stop so behaviour is consistent.
@@ -510,10 +558,17 @@ automation:
               - action: switch.turn_off
                 target:
                   entity_id: switch.peblar_ev_charger_charge
-          # 1-phase
+          # 1-phase. Also the landing place for leave_3p: the action needed to
+          # step down out of 3-phase is exactly this one (6 A single-phase, keep
+          # charging), so it shares the branch rather than duplicating it. When
+          # leave_3p fires with phase mode at 'stop' the charger deliberately
+          # keeps running at the 1-phase floor instead of stopping — import is
+          # ~0 there, and ev_stop still gets the final say 2 minutes later.
           - conditions:
               - condition: trigger
-                id: ev_1p
+                id:
+                  - ev_1p
+                  - leave_3p
             sequence:
               - action: number.set_value
                 target:

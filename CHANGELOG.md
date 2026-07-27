@@ -31,6 +31,50 @@ All notable changes to this project will be documented here.
   automation; `ev_solar.yaml` drives it and delegates its final stop to this `none`
   branch).
 
+## [0.2.16] – 2026-07-27
+
+### Fixed
+- **Charger could sit at the 3-phase floor importing from the grid instead of stepping down**
+  (production 2026-07-26 and 2026-07-27). The 3-phase floor is 6 A × 3 ≈ 4.1 kW against a
+  1-phase floor of ≈ 1.38 kW, so once surplus falls short, staying in 3-phase costs ~2.7 kW of
+  grid import while staying in 1-phase costs ~0. Both step-down paths — `ev_stop` and `ev_1p` —
+  require their state to hold for 2 continuous minutes, but when surplus hovers at
+  `ev_solar_min_charge_threshold_w` the phase mode flaps `single_phase`↔`stop` every few
+  seconds, so neither `for:` ever completes, and `mode: restart` means each flap cancels the
+  other's timer. On 2026-07-27 the charger drew 4.1 kW with 2.4–3.0 kW import for 7 minutes and
+  was only rescued by a manual force-to-1-phase; on 2026-07-26 an equivalent stall ran 7 minutes
+  after a `cheapest`→`solar` handover before `ev_stop` happened to catch it.
+
+  New `leave_3p` template trigger (60 s) fires when the charger is charging, is in 3-phase, and
+  the phase mode says it should not be — treating `stop` and `single_phase` as the same
+  instruction, since in 3-phase they both mean "step down". It shares the `ev_1p` branch, so the
+  charger drops to 1-phase at 6 A and **keeps charging**; `ev_stop` still makes the stop
+  decision 2 minutes later, but now from 1-phase where being wrong is nearly free. Deliberately
+  asymmetric: leaving 3-phase is expensive and therefore fast, stopping is cheap and stays lazy.
+  Also lowers the `battery_assist` floor from 4.1 kW to 1.4 kW while keeping the charger armed.
+
+  Two design points, both learned from prod traces rather than reasoning:
+  - It must be a **template** trigger, not `not_to: "three_phase"`. A state trigger's `for:`
+    restarts on every state change that matches it, so the `single_phase`↔`stop` flapping would
+    reset it indefinitely — the very failure being fixed. A template `for:` requires the
+    *result* to hold, which it does across the flapping.
+  - `sensor.ev_charging_mode` is repeated **inside the template** even though the automation's
+    `conditions:` already gate on it. A template trigger fires once on the false→true edge and
+    not again while it stays true, so a gate living only in `conditions:` can be missed
+    entirely: on 2026-07-26 the template went true at 17:26:15 mid-`cheapest`, fired and was
+    discarded at 17:27:15, and was still true at the 18:00 handover to `solar` — no second edge,
+    no trigger. Including the mode makes the handover itself an edge.
+
+  The trigger also requires the charge switch to already be `on`, which keeps it a step-down and
+  never a start: without it, sunrise entry into `solar` with the charger still configured
+  3-phase from the night before would start charging into no surplus for the 60 s before
+  `ev_mode_entry` shut it off again.
+
+  Replayed against recorded prod state, this fires 4× on 2026-07-27 against 5 three-phase
+  episodes — 05:36:16 (2 min before the real switch), 12:07:16, 13:46:07 (1 min before), and
+  14:30:02 (7 min before the manual rescue) — plus the 2026-07-26 18:01:00 handover that the
+  first draft missed.
+
 ## [0.2.15] – 2026-07-26
 
 ### Changed
