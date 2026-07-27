@@ -42,10 +42,13 @@ input_text:
 
   # ev_home_battery_power_entity
   #   Net battery power from a home battery system in W (bidirectional:
-  #   positive = charging, negative = discharging).
-  #   When set, ev_grid_excess_power adds back the positive (charging)
-  #   component, so solar surplus absorbed by home batteries becomes visible
-  #   to the EV charger. Leave empty without a home battery.
+  #   positive = discharging to the home/grid, negative = charging).
+  #   When set, ev_grid_excess_power adds the charging component back
+  #   (solar surplus absorbed by home batteries becomes visible to the EV
+  #   charger) and subtracts the discharging component in every mode except
+  #   battery_assist — so battery power being exported (e.g. a sell-to-grid
+  #   strategy) never masquerades as solar surplus. Leave empty without a
+  #   home battery.
   #   Example (HBA / Marstek): sensor.hba_total_battery_power
   ev_home_battery_power_entity:
     name: "EV Home battery power entity"
@@ -84,6 +87,17 @@ template:
       # Expects sensor.electricity_meter_power_consumption and _production in W.
       # See binary_sensor.ev_p1_unit_mismatch — it turns ON when either sensor
       # reports a unit other than W, which will produce wrong results here.
+      #
+      # Home battery handling (when ev_home_battery_power_entity is set;
+      # convention: positive = discharging, negative = charging):
+      #   - the charging component is added back, so surplus the battery
+      #     absorbs stays visible to the EV charger
+      #   - the discharging component is subtracted in every mode except
+      #     battery_assist, so battery power flowing to the grid (e.g. the
+      #     battery system selling at expensive hours) is never mistaken for
+      #     solar surplus. The subtraction is self-consistent even when the
+      #     battery system regulates grid power with a PID: the value always
+      #     converges to the true solar surplus (production minus house load).
       - name: "EV Grid Excess Power"
         unique_id: ev_grid_excess_power
         unit_of_measurement: "W"
@@ -92,12 +106,24 @@ template:
         state: >
           {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
           {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
-          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(500) %}
+          {# Fall back to 0, not a guessed draw. charger_power is ADDED to excess
+             (it is what the charger is currently taking, which is available again
+             if we back off), so an over-stated default inflates excess and the
+             loop commands more current than the surplus supports — i.e. it pulls
+             from the grid, silently, for as long as the sensor is unavailable.
+             0 under-states excess instead, which makes the loop back off or stop:
+             the safe direction, and self-correcting once the sensor returns. The
+             previous default of 500 W was arbitrary and wrong in both directions
+             (a phantom 500 W with no car, ~4 kW short mid-session). Every other
+             read of this sensor in the package already defaults to 0. #}
+          {% set charger_power = states('sensor.peblar_ev_charger_power') | float(0) %}
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
+          {% set batt_charge = [-(batt_power), 0] | max %}
+          {% set batt_discharge = 0 if is_state('sensor.ev_charging_mode', 'battery_assist') else [batt_power, 0] | max %}
           {% set current_power = grid_export - grid_import %}
-          {% set excess = current_power + charger_power + [-(batt_power), 0] | max - buffer %}
+          {% set excess = current_power + charger_power + batt_charge - batt_discharge - buffer %}
           {{ excess | round(0) }}
 
       # Calculate available charging amps for SINGLE PHASE.
@@ -270,6 +296,52 @@ template:
         delay_on: "00:02:00"
         delay_off: "00:05:00"
 
+      # ON when the charger cannot take more power than it currently delivers —
+      # the "sink is saturated" signal for home battery coordination.
+      # Two saturation causes, OR'ed:
+      #   1. Pinned: the commanded current limit is at the 16 A maximum. This
+      #      covers 16 A single-phase, 16 A three-phase, AND the phase-switch
+      #      hysteresis band (surplus above 1-phase capacity but below the
+      #      3-phase switch threshold, where the charger sits pinned at 16 A/1p).
+      #   2. Derated: sensor.peblar_ev_charger_charge_current_limit_actual
+      #      reports min(commanded, externally available) — when it drops below
+      #      what we command, CT/household load balancing (or another charger
+      #      constraint) is the binding limit and surplus will go unconsumed.
+      #      The actual sensor is quantized to whole amps while the commanded
+      #      limit is mA-fine, so the comparison floors the commanded value to
+      #      whole amps first — otherwise ordinary regulation (e.g. commanded
+      #      6350 mA, actual 6 A) reads as a permanent phantom derate. A
+      #      genuine load-balancing derate is ≥ 1 A, so nothing real is lost.
+      # Known blind spot (accepted): a current cap set inside the car is
+      # invisible to the charger, so neither term fires for it.
+      # delay_on: saturation must be sustained, not a ramp overshoot;
+      # delay_off: survives the 1p→3p switchover dip and brief cloud edges,
+      # answering the "what if it quickly swaps?" concern — the battery side
+      # sees transitions minutes apart at worst.
+      # Restart behaviour (measured in production 2026-07-12): the sensor
+      # restores its pre-restart state. A stale restored 'on' takes
+      # ~delay_off + integration startup (≈4 min) to release; a brand-new
+      # entity reads 'unknown' for the first delay_off. Consumers treating
+      # only 'on' as saturated (HBA does) are exposed to at most that stale
+      # window after a reboot — accepted as bounded and self-correcting.
+      # Consumed by HBA via input_text.hba_strategy_ev_saturated_entity_id to
+      # gate "Charge PV during EV charge": the batteries only absorb residual
+      # surplus while the charger is a constant load, never while it is
+      # actively regulating — the two control loops cannot fight.
+      - name: "EV Charger Saturated"
+        unique_id: ev_charger_saturated
+        state: >-
+          {%- set charging = is_state('binary_sensor.ev_is_charging', 'on') -%}
+          {%- set cmd_ma = states('number.peblar_ev_charger_charge_current_limit_ma') | float(0) -%}
+          {%- set actual = states('sensor.peblar_ev_charger_charge_current_limit_actual') | float(-1) -%}
+          {#- actual reports in A; tolerate a mA-reporting variant by scale-detecting -#}
+          {%- set actual_ma = actual * 1000 if 0 <= actual < 100 else actual -%}
+          {%- set pinned = cmd_ma >= 15900 -%}
+          {%- set derated = actual_ma >= 0 and actual_ma < (cmd_ma // 1000) * 1000 -%}
+          {{ charging and (pinned or derated) }}
+        delay_on: "00:01:30"
+        delay_off: "00:03:00"
+
       # ON when a configured solar or home battery power entity reports in kW
       # instead of W. All EV charging calculations expect W; kW input will
       # produce results roughly 1000× too small, silently breaking regulation.
@@ -343,6 +415,54 @@ automation:
         for: "00:04:00" # was 5 but feels slow?
         # for: "00:00:50" # for testing
         id: ev_3p
+      # Leave 3-phase decisively. In 3-phase the floor is 6 A × 3 ≈ 4.1 kW; in
+      # 1-phase it is ≈ 1.38 kW. So once surplus falls short, staying in 3-phase
+      # costs ~2.7 kW of grid import while staying in 1-phase costs ~0 — the two
+      # cases deserve very different urgency, and 'stop' vs 'single_phase' is a
+      # far cheaper question than 'am I still in 3-phase'. Stepping down is
+      # therefore fast (60 s) while the stop decision stays lazy (ev_stop, 2 min)
+      # and is only ever taken from 1-phase, where being wrong is nearly free.
+      #
+      # Must be a template trigger, not `not_to: "three_phase"`. A state trigger's
+      # `for:` restarts on every state change that matches it, so a phase mode
+      # flapping single_phase↔stop resets the timer indefinitely — and because
+      # this automation is mode: restart, ev_stop and ev_1p also cancel each
+      # other on every flap. Observed on prod 2026-07-27: 4.1 kW with 2.4–3.0 kW
+      # grid import for 7 minutes, ended only by a manual force-1-phase. Both of
+      # those states mean the same thing here ("get out of 3-phase"), so the
+      # trigger tests that condition rather than the transitions; a template
+      # `for:` requires the *result* to hold, which it does across the flapping.
+      #
+      # Listing the states explicitly rather than `!= 'three_phase'` keeps
+      # unknown/unavailable from arming the charger (e.g. during startup, before
+      # the phase-mode sensor has a value).
+      #
+      # The charge-switch check is what keeps this a step-DOWN and never a start.
+      # It shares the ev_1p branch, which turns charging on — correct for ev_1p
+      # (that is how a solar session begins) but wrong here. Without it, sunrise
+      # reproduces: ev_charging_mode enters solar while the charger is still
+      # configured 3-phase from the evening before and phase mode is 'stop', so
+      # leave_3p would fire at +60 s and start charging into no surplus, and
+      # ev_mode_entry would only shut it off again at +2 min. Requiring an
+      # already-charging charger makes leave_3p a no-op there.
+      # ev_charging_mode is repeated here even though the automation's conditions
+      # already gate on it. A template trigger fires once on the false→true edge
+      # (after `for:`) and not again while it stays true, so a gate that lives
+      # only in `conditions:` can be missed entirely: the edge happens, the
+      # condition rejects it, and no second edge ever comes. Reproduced from prod
+      # 2026-07-26 — the template went true at 17:26:15 during a `cheapest`
+      # session, fired and was discarded at 17:27:15, and was still true when the
+      # mode handed over to `solar` at 18:00, so nothing re-triggered; the charger
+      # sat at the 3-phase floor importing 1.4–3.1 kW until ev_stop caught it 7
+      # minutes later. Including the mode makes the handover itself an edge.
+      - trigger: template
+        value_template: >
+          {{ is_state('switch.peblar_ev_charger_charge', 'on')
+             and is_state('switch.peblar_ev_charger_force_single_phase', 'off')
+             and states('sensor.ev_optimal_charging_phase_mode') in ['single_phase', 'stop']
+             and states('sensor.ev_charging_mode') in ['solar', 'battery_assist'] }}
+        for: "00:01:00"
+        id: leave_3p
       # Fires when mode enters solar/battery_assist while ev_optimal_charging_phase_mode
       # was already 'stop' (e.g. window→solar at sunrise before any production).
       # Same 2-minute delay as ev_stop so behaviour is consistent.
@@ -378,6 +498,30 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
+      # Do not regulate a charger with no car on it. Nothing else in the solar
+      # chain checks the plug: ev_charging_mode goes to 'solar' on
+      # ev_solar_viable alone (sun/PV, not the car), and
+      # ev_optimal_charging_phase_mode is pure arithmetic on excess vs the
+      # thresholds. Without this gate the loop tracks surplus all day with an
+      # empty cable, toggling switch.peblar_ev_charger_charge as clouds pass.
+      # Observed 2026-07-26: ~19 toggles between 08:45 (unplug) and 15:04
+      # (plug-in).
+      #
+      # The real damage is that whether the switch is left armed or disarmed at
+      # plug-in time becomes a coin flip decided by cloud cover. On 2026-07-26
+      # the last act before handover to 'cheapest' was a stop at 14:54:24 —
+      # the home batteries tapering off shrank the batt_charge term below
+      # ev_solar_min_charge_threshold_w — and the charger stayed dead through
+      # the cheapest hour of the day. On 2026-07-24 the same loop happened to
+      # leave it armed at 16:49 and the car charged on plug-in with no
+      # automation involvement at all.
+      #
+      # Stop actions are gated too, deliberately: with no car connected there is
+      # nothing to stop, and ev_generic's mode_none branch remains the
+      # unconditional disarm path across a disconnect.
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
       - condition: or
         conditions:
           - condition: and
@@ -393,18 +537,38 @@ automation:
             state: "battery_assist"
     actions:
       - choose:
-          # Stop
+          # Stop — solar mode only. In battery_assist the home battery side is
+          # the authority on when to push: excess collapses to ~0 whenever it
+          # abstains (e.g. HBA's "waiting for EV" state while the charger needs
+          # a tag scan or the car paused itself). The charger must stay armed in
+          # that state so the car can resume drawing (tag scan, limit raised) —
+          # that draw is the very signal that wakes the battery side back up.
+          # An armed charger with a suspended car draws 0 W, so leaving it on is
+          # harmless. When assist ends, ev_charging_mode leaves battery_assist
+          # and the generic mode control (mode 'none') stops the charger.
           - conditions:
               - condition: trigger
                 id: ev_stop
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: sensor.ev_charging_mode
+                    state: "battery_assist"
             sequence:
               - action: switch.turn_off
                 target:
                   entity_id: switch.peblar_ev_charger_charge
-          # 1-phase
+          # 1-phase. Also the landing place for leave_3p: the action needed to
+          # step down out of 3-phase is exactly this one (6 A single-phase, keep
+          # charging), so it shares the branch rather than duplicating it. When
+          # leave_3p fires with phase mode at 'stop' the charger deliberately
+          # keeps running at the 1-phase floor instead of stopping — import is
+          # ~0 there, and ev_stop still gets the final say 2 minutes later.
           - conditions:
               - condition: trigger
-                id: ev_1p
+                id:
+                  - ev_1p
+                  - leave_3p
             sequence:
               - action: number.set_value
                 target:
@@ -438,11 +602,16 @@ automation:
           # Mode entry cleanup: charger was left on by window/cheapest and
           # phase mode is already stop — turn off without waiting for a
           # phase-mode state change that will never come.
+          # Solar mode only: in battery_assist the charger stays armed even at
+          # phase mode 'stop' (see the ev_stop branch comment above).
           - conditions:
               - condition: trigger
                 id: ev_mode_entry
             sequence:
               - if:
+                  - condition: state
+                    entity_id: sensor.ev_charging_mode
+                    state: "solar"
                   - condition: state
                     entity_id: sensor.ev_optimal_charging_phase_mode
                     state: "stop"
@@ -562,6 +731,13 @@ automation:
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
+      # Same plug gate as the mode control above. The charge-switch condition
+      # below is not sufficient on its own: the switch can sit armed with no car
+      # attached (any stop path that fails to disarm, or a plug-out while on),
+      # and this automation then writes the mA register every 3 s indefinitely.
+      - condition: state
+        entity_id: binary_sensor.ev_is_connected
+        state: "on"
       - condition: or
         conditions:
           - condition: and
@@ -603,51 +779,3 @@ automation:
               {# Single phase mode and also active #}
               {{ ma_1f if ma_1f >= 6000 else 6000 }}
             {% endif %}
-
-  - id: ev_power_entity_unit_mismatch_notification
-    alias: "EV: Power entity unit mismatch notification"
-    description: >-
-      Notifies when a configured solar or home battery power entity reports
-      in kW instead of W. Fires on HA start and on state change to on.
-    mode: single
-    triggers:
-      - trigger: state
-        entity_id: binary_sensor.ev_power_entity_unit_mismatch
-        to: "on"
-      - trigger: homeassistant
-        event: start
-    actions:
-      - choose:
-          - conditions:
-              - condition: state
-                entity_id: binary_sensor.ev_power_entity_unit_mismatch
-                state: "on"
-            sequence:
-              - action: script.ev_notify_dispatch
-                data:
-                  title: "EV: Power entity unit mismatch"
-                  message: >-
-                    A configured solar or home battery power entity is
-                    reporting in kW instead of W. Charging calculations
-                    will produce incorrect results. Check
-                    ev_solar_power_entity_1, ev_solar_power_entity_2, or
-                    ev_home_battery_power_entity.
-                  tag: ev_power_entity_unit_mismatch
-                  color: red
-                  priority: high
-              - action: persistent_notification.create
-                data:
-                  notification_id: ev_power_entity_unit_mismatch
-                  title: "EV: Power entity unit mismatch"
-                  message: >-
-                    A configured solar or home battery power entity reports
-                    in **kW** instead of **W**. EV charging calculations
-                    will produce incorrect results.
-
-                    Check **EV Charging → Settings → Power entities**:
-                    `ev_solar_power_entity_1`, `ev_solar_power_entity_2`,
-                    or `ev_home_battery_power_entity`.
-        default:
-          - action: persistent_notification.dismiss
-            data:
-              notification_id: ev_power_entity_unit_mismatch
