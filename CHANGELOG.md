@@ -2,6 +2,243 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.16] – 2026-07-27
+
+### Fixed
+- **Charger could sit at the 3-phase floor importing from the grid instead of stepping down**
+  (production 2026-07-26 and 2026-07-27). The 3-phase floor is 6 A × 3 ≈ 4.1 kW against a
+  1-phase floor of ≈ 1.38 kW, so once surplus falls short, staying in 3-phase costs ~2.7 kW of
+  grid import while staying in 1-phase costs ~0. Both step-down paths — `ev_stop` and `ev_1p` —
+  require their state to hold for 2 continuous minutes, but when surplus hovers at
+  `ev_solar_min_charge_threshold_w` the phase mode flaps `single_phase`↔`stop` every few
+  seconds, so neither `for:` ever completes, and `mode: restart` means each flap cancels the
+  other's timer. On 2026-07-27 the charger drew 4.1 kW with 2.4–3.0 kW import for 7 minutes and
+  was only rescued by a manual force-to-1-phase; on 2026-07-26 an equivalent stall ran 7 minutes
+  after a `cheapest`→`solar` handover before `ev_stop` happened to catch it.
+
+  New `leave_3p` template trigger (60 s) fires when the charger is charging, is in 3-phase, and
+  the phase mode says it should not be — treating `stop` and `single_phase` as the same
+  instruction, since in 3-phase they both mean "step down". It shares the `ev_1p` branch, so the
+  charger drops to 1-phase at 6 A and **keeps charging**; `ev_stop` still makes the stop
+  decision 2 minutes later, but now from 1-phase where being wrong is nearly free. Deliberately
+  asymmetric: leaving 3-phase is expensive and therefore fast, stopping is cheap and stays lazy.
+  Also lowers the `battery_assist` floor from 4.1 kW to 1.4 kW while keeping the charger armed.
+
+  Two design points, both learned from prod traces rather than reasoning:
+  - It must be a **template** trigger, not `not_to: "three_phase"`. A state trigger's `for:`
+    restarts on every state change that matches it, so the `single_phase`↔`stop` flapping would
+    reset it indefinitely — the very failure being fixed. A template `for:` requires the
+    *result* to hold, which it does across the flapping.
+  - `sensor.ev_charging_mode` is repeated **inside the template** even though the automation's
+    `conditions:` already gate on it. A template trigger fires once on the false→true edge and
+    not again while it stays true, so a gate living only in `conditions:` can be missed
+    entirely: on 2026-07-26 the template went true at 17:26:15 mid-`cheapest`, fired and was
+    discarded at 17:27:15, and was still true at the 18:00 handover to `solar` — no second edge,
+    no trigger. Including the mode makes the handover itself an edge.
+
+  The trigger also requires the charge switch to already be `on`, which keeps it a step-down and
+  never a start: without it, sunrise entry into `solar` with the charger still configured
+  3-phase from the night before would start charging into no surplus for the 60 s before
+  `ev_mode_entry` shut it off again.
+
+  Replayed against recorded prod state, this fires 4× on 2026-07-27 against 5 three-phase
+  episodes — 05:36:16 (2 min before the real switch), 12:07:16, 13:46:07 (1 min before), and
+  14:30:02 (7 min before the manual rescue) — plus the 2026-07-26 18:01:00 handover that the
+  first draft missed.
+
+## [0.2.15] – 2026-07-26
+
+### Changed
+- **All notification logic moved to `packages/ev/ev_notifications.yaml`.** Pure file split —
+  no entity IDs, unique_ids, automation ids or behaviour changed, so nothing is renamed in the
+  entity registry and no reconfiguration is needed. Moved: `ev_notify_dispatch` and
+  `ev_notify_test` (scripts), and the nine notification-only automations —
+  `ev_notify_target_validation`, `ev_charging_complete_notification`,
+  `ev_charger_error_notification`, `ev_notify_charger_alert`, `ev_notify_unexpected_charging`,
+  `ev_notify_manual_override_reminder`, `ev_notify_unexpected_grid_charging` and
+  `_resolved` (from `ev_generic.yaml`), plus `ev_power_entity_unit_mismatch_notification`
+  (from `ev_solar.yaml`). `ev_generic.yaml` drops 377 lines, `ev_solar.yaml` 48.
+
+  Helpers and template sensors stay with their domain rather than following the automations:
+  `input_boolean.ev_notifications_enabled`, `input_text.ev_notify_entity_id` and
+  `binary_sensor.ev_notify_target_invalid` remain in `ev_generic.yaml`;
+  `binary_sensor.ev_power_entity_unit_mismatch` and `ev_p1_unit_mismatch` remain in
+  `ev_solar.yaml`. Automations that *act* and merely notify as a side effect also stay put —
+  notably `ev_validate_charging_limit`, which corrects the car's charge limit. This mirrors
+  `hba_notifications.yaml` in the sibling HBA project, which likewise holds only `automation:`
+  and `script:`.
+
+- **`install.sh` ships the new file** (added to `CORE_FILES`). Updating requires an installer
+  that knows about `ev_notifications.yaml`: an older one will overwrite `ev_generic.yaml` with
+  the stripped version and never fetch the new file, silently removing every notification
+  *and* `script.ev_notify_dispatch`, which several non-notification automations call.
+
+- **README: fetch `install.sh` from the ref you are installing.** The dev example now uses
+  `dev/install.sh` rather than `main/install.sh`. `EV_VERSION` selects the ref for the package
+  *files*, but the installer is whatever was piped into bash — mixing them runs an older
+  installer against newer content, which is exactly the failure mode above.
+
+## [0.2.14] – 2026-07-26
+
+### Fixed
+- **Tariff modes never started when the mode armed before the car was plugged in**
+  (production incident 2026-07-26). `ev_generic_charging_mode_control` could only act on
+  a *change* of `sensor.ev_charging_mode`, so a `force`/`cheapest`/`window` mode that
+  became active while the cable was out was never applied when the car arrived: the
+  mode-change trigger had already fired and no-oped on the connection gate, and plugging
+  in produced no further trigger. On 2026-07-26 the mode went to `cheapest` at 14:56 with
+  the car away, the car was plugged in at 15:04, and the charger sat idle through the
+  cheapest hour of the day (€0.0558/kWh) until it was started by hand at 17:15 — 2 h 11 m
+  lost. New `connected` trigger on `binary_sensor.ev_is_connected → on` (30 s settle)
+  re-evaluates on plug-in; the start branch now also asserts `ev_charging_mode` is one of
+  `force`/`cheapest`/`window`, so a plug-in during `solar`, `battery_assist` or `none`
+  still starts nothing. `solar` never had this bug because it re-evaluates continuously
+  via `ev_optimal_charging_phase_mode`; the tariff modes have no such heartbeat.
+
+- **Solar loop regulated the charger with no car attached.** Nothing in the solar chain
+  checked the plug: `ev_charging_mode` goes to `solar` on `ev_solar_viable` alone (sun/PV,
+  not the car), and `ev_optimal_charging_phase_mode` is pure arithmetic on excess vs the
+  thresholds. Both `ev_solar_charge_mode_control` and `ev_solar_dynamic_power_control`
+  now require `binary_sensor.ev_is_connected` to be `on`. Previously the loop tracked
+  surplus all day with an empty cable — on 2026-07-26, ~19 charge-switch toggles and mA
+  writes every 3 s between 08:45 (unplug) and 15:04 (plug-in). Beyond the pointless
+  Modbus traffic, this made "is the switch armed at plug-in time" a coin flip decided by
+  cloud cover, which is what masked the trigger bug above: on 2026-07-24 the loop happened
+  to leave the switch armed at 16:49 and the car charged on plug-in with no automation
+  involvement, while on 2026-07-26 its last act before handing over to `cheapest` was a
+  stop at 14:54:24 (the home batteries tapering off shrank the `batt_charge` term below
+  `ev_solar_min_charge_threshold_w`). Stop actions are gated too: with no car there is
+  nothing to stop, and the `mode_none` branch of `ev_generic_charging_mode_control`
+  remains the unconditional disarm path across a disconnect (0.2.13).
+
+- **`ev_grid_excess_power` invented 500 W when the charger power sensor was
+  unavailable.** `charger_power` is *added* to excess (it is what the charger is
+  currently drawing, which becomes available again if the loop backs off), so an
+  over-stated fallback inflates excess and the loop commands more current than the
+  surplus supports — pulling from the grid, silently, for as long as the sensor is
+  unavailable. Now defaults to 0, which under-states excess instead and makes the loop
+  back off or stop: the safe direction, and self-correcting once the sensor returns. The
+  old 500 W was arbitrary and wrong in both directions — a phantom 500 W of surplus with
+  no car attached, and ~4 kW short mid-session. Every other read of this sensor in the
+  package already defaulted to 0.
+
+## [0.2.13] – 2026-07-24
+
+### Fixed
+- **Charger could resume on the next plug-in after a mode ended while disconnected.**
+  The charge switch (Modbus reg 40000) is a persistent latch, and
+  `ev_generic_charging_mode_control` stops it on `ev_charging_mode → none` — but that
+  automation was gated entirely on `binary_sensor.ev_is_connected` being `on`, so when a
+  mode turned to `none` while the cable was out (one-time force cleared on unplug,
+  permanent force toggled off, or any mode disabled while disconnected), the stop was
+  skipped and the switch stayed armed at its last mA. Re-plugging then resumed charging
+  with no active mode. The "car connected" gate now lives on the *start* branch only
+  (`mode_full_power`) — starting still requires a connected car — while the stop branch
+  (`mode_none`) runs regardless of plug state, so the switch is never left armed across a
+  disconnect. Fix is mode-agnostic: it covers one-time force, permanent force, and any
+  other mode ending while unplugged. `solar` is unaffected (not a trigger of this
+  automation; `ev_solar.yaml` drives it and delegates its final stop to this `none`
+  branch).
+
+## [0.2.12] – 2026-07-24
+
+### Added
+- **One-time force charge now ends on disconnect** — `input_boolean.ev_force_charge_once`
+  auto-disables when the cable is unplugged, making it truly one-time rather than
+  "until the 8-hour timeout." New automation `ev_force_charge_once_disable_on_disconnect`
+  triggers on `binary_sensor.ev_is_connected` going `off` for 1 minute (the debounce
+  absorbs transient unavailable/unknown reads, which also flip that sensor off), turns
+  the boolean off, and notifies. The 8-hour timeout and reach-limit auto-disables remain
+  as backstops. Permanent force charge is unaffected.
+
+## [0.2.11] – 2026-07-17
+
+### Fixed
+- **Modbus variant: charger could re-enable itself right after a stop** (production
+  incident 2026-07-16). Register 40000 is both the on/off control and the mA setpoint,
+  and the charge switch state mirrors a register polled at 1 s. A stop's 0-write could
+  be followed within 1–2 s by a 6000 mA write from `ev_solar_dynamic_power_control`
+  whose guard had passed on the stale `on` state — re-enabling charging *permanently*,
+  because the rewrite keeps the poll reading ≥ 6000 so the stale guard never corrects
+  itself (observed: automated stop at mode entry and a manual toggle both lost this
+  race; only a lucky-timed second manual toggle broke the livelock).
+  `switch.peblar_ev_charger_charge` `turn_off` now delegates to the internal
+  `script.peblar_ev_charger_stop`: the 0 is written immediately (instant stop), mA
+  writes are suppressed for the whole script run (script run state is synchronous —
+  no poll lag), and the stop is only declared done once the switch reads `off`
+  sustained for 4 s (filters phantom `off` from a failed poll), retrying up to 3×
+  and notifying (ungated, high priority) if the charger never confirms. On failure the
+  script exits so regulation degrades to minimum current instead of wedging.
+  `turn_on` cancels a pending stop (later command wins). Re-writing 0 does not touch
+  the 3-toggles/10-min budget — register writes are not rate-limited. Confirmation
+  (and the end of write suppression) takes ~10 s after the toggle (see
+  MODBUS-README.md, "Confirmed stop").
+
+## [0.2.10] – 2026-07-12
+
+### Fixed
+- **`ev_charger_saturated` false positive during ordinary regulation** — the derated term
+  compared the mA-fine commanded limit against `charge_current_limit_actual` with only a
+  200 mA margin, but the actual sensor is quantized to whole amps: commanded 6350 mA with
+  actual 6 A read as a permanent phantom derate, keeping the sensor `on` while the charger
+  was regulating normally (observed live at 1460 W / ~6.3 A). The commanded value is now
+  floored to whole amps before the comparison; a genuine load-balancing derate is ≥ 1 A,
+  so no real derating is missed.
+
+## [0.2.9] – 2026-07-12
+
+### Added
+- **`binary_sensor.ev_charger_saturated`** — ON when the charger cannot take more power
+  than it currently delivers: commanded current limit pinned at the 16 A maximum (covers
+  1-phase max, 3-phase max, and the phase-switch hysteresis band), OR
+  `charge_current_limit_actual` (= min(commanded, externally available)) dropping below the
+  commanded value, meaning CT/household load balancing is the binding constraint.
+  `delay_on` 1:30 / `delay_off` 3:00 provide hysteresis so downstream consumers see
+  transitions minutes apart at worst. Built for home battery coordination: point HBA's
+  `input_text.hba_strategy_ev_saturated_entity_id` at this sensor so "Charge PV during EV
+  charge" only runs while the charger is a constant load (genuinely unconsumable surplus)
+  and never competes with the charger's own regulation. Known blind spot: a current cap
+  configured inside the car is invisible to the charger and does not trigger the sensor.
+
+## [0.2.8] – 2026-07-11
+
+### Fixed
+- **battery_assist: charger stays armed when the battery side stops pushing** — the
+  `ev_stop` branch of `ev_solar_charge_mode_control` (and the mode-entry cleanup) no longer
+  turn off `switch.peblar_ev_charger_charge` while in `battery_assist` mode. In that mode
+  the home battery system is the authority on when to push power; excess collapses to ~0
+  whenever it abstains — e.g. HBA's new "waiting for EV" state while the charger needs a
+  tag scan or the car paused itself. Disarming the charger there created a deadlock:
+  the car could never resume drawing, so the battery side could never see it resume.
+  Observed live 2026-07-11 22:17 (charge switch turned off 3 min into a waiting period).
+  An armed charger with a suspended car draws 0 W; assist end still stops the charger via
+  the generic mode control when `ev_charging_mode` returns to `none`.
+
+## [0.2.7] – 2026-07-11
+
+### Fixed
+- **Home battery discharge no longer masquerades as solar surplus** —
+  `sensor.ev_grid_excess_power` now subtracts the battery *discharging* component in every
+  mode except `battery_assist`. Previously only the charging component was handled (added
+  back), so when a home battery system exported to the grid (e.g. a sell-at-expensive-hours
+  strategy), the export was indistinguishable from solar surplus and could start/sustain a
+  solar-mode charging session on battery power. Verified against production recorder data:
+  battery-only discharge briefly pushed the old excess above the 1380 W start threshold and
+  flipped `ev_optimal_charging_phase_mode` out of `stop`; the corrected value stays negative.
+  In `battery_assist` mode the subtraction is bypassed (consuming battery power is the point),
+  confirmed byte-identical against a recorded full assist session. The corrected excess always
+  converges to the true solar surplus (production − house load), even when the battery system
+  regulates grid power with a PID.
+- **Sign convention documentation** — the `ev_home_battery_power_entity` helper comment and
+  the dashboard settings markdown said "positive = charging"; the code (and the suggested
+  `sensor.hba_total_battery_power`) use positive = discharging. Docs corrected to match the
+  code.
+
+## [0.2.6] – 2026-06-20
+
+### Added
+- **Unexpected charging detection** — new `binary_sensor.ev_unexpected_grid_charging` (delay_on 5 min) detects two anomaly classes: (1) charger drawing > 300 W while `ev_charging_mode` is `none`; (2) charger drawing > 300 W with > 500 W grid import while in `solar` or `battery_assist` mode (control loop not regulating). Suppressed automatically when `input_boolean.ev_manual_override` is on. Two new automations: `ev_notify_unexpected_grid_charging` fires push + persistent HA notification on turn-on (persistent stays until manually dismissed, for overnight visibility); `ev_notify_unexpected_grid_charging_resolved` fires push-only when the condition clears (skipped if manual override caused the clearance).
+
 ## [0.2.5] – 2026-06-20
 
 ### Fixed

@@ -681,7 +681,14 @@ template:
         # so without the floor, turn_on would write 0 (a no-op — switch flips
         # on visually but charging stays off). 6000 mA = 6 A is the legal
         # minimum and matches the Peblar's natural "start charging" behaviour.
+        # Cancelling script.peblar_ev_charger_stop first resolves a stop/start
+        # collision deterministically in favour of the later command: the
+        # pending stop is abandoned (its mA-write suppression lifts) and the
+        # limit write below proceeds.
         turn_on:
+          - service: script.turn_off
+            target:
+              entity_id: script.peblar_ev_charger_stop
           - variables:
               limit: >-
                 {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000, 6000] | max }}
@@ -693,16 +700,19 @@ template:
               value:
                 - "{{ (limit | int) // 65536 }}"
                 - "{{ (limit | int) % 65536 }}"
-        # Turn off writes 0 to pause charging
+        # Turn off delegates to script.peblar_ev_charger_stop — a confirmed,
+        # retried stop that suppresses concurrent mA writes while it runs
+        # (see the script definition below for the full rationale). Invoked
+        # fire-and-forget via script.turn_on so this action returns
+        # immediately; the script writes the 0 as its first step, so the
+        # charger stops right away and the switch reads 'off' one poll later
+        # (~1-2 s). A plain 0-write here raced ev_solar_dynamic_power_control
+        # and could leave the charger permanently re-enabled (production
+        # 2026-07-16).
         turn_off:
-          - service: modbus.write_register
-            data:
-              hub: peblar
-              address: 40000
-              slave: 1
-              value:
-                - 0
-                - 0
+          - service: script.turn_on
+            target:
+              entity_id: script.peblar_ev_charger_stop
 
   - number:
       - name: Peblar EV Charger Charge Current Limit mA
@@ -712,11 +722,18 @@ template:
         state: "{{ states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) }}"
         set_value:
           # Guard: do not write if charging is off (switch state = off means
-          # register 40000 = 0). Without this, ev_solar_dynamic_power_control
-          # writing 6000 mA would immediately re-enable charging after
-          # switch.turn_off wrote 0 to the same register.
+          # register 40000 = 0) or while a stop is in progress. The switch
+          # check alone is NOT sufficient: the switch state mirrors a polled
+          # register (scan_interval 1 s), so for 1-2 s after a stop's 0-write
+          # it still reads 'on' — exactly the window in which a 6000 mA write
+          # from ev_solar_dynamic_power_control would re-enable charging, and
+          # permanently so, because the rewrite keeps the poll reading ≥ 6000
+          # (production incident 2026-07-16). The script's run state is
+          # synchronous HA state — no poll lag — which closes that window.
           - condition: template
-            value_template: "{{ is_state('switch.peblar_ev_charger_charge', 'on') }}"
+            value_template: >-
+              {{ is_state('switch.peblar_ev_charger_charge', 'on')
+                 and not is_state('script.peblar_ev_charger_stop', 'on') }}
           - service: modbus.write_register
             data:
               hub: peblar
@@ -823,6 +840,123 @@ input_number:
     unit_of_measurement: "A"
     mode: box
     icon: mdi:current-ac
+
+# ── Internal stop script ───────────────────────────────────────────────────
+# Backs switch.peblar_ev_charger_charge turn_off. Not for direct use —
+# call switch.turn_off, which delegates here.
+#
+# Why this exists: register 40000 is both the on/off control (0 = off) and
+# the mA setpoint, and the switch state is a polled mirror (scan_interval
+# 1 s). A plain 0-write could be followed 1-2 s later by a guarded mA write
+# that passed on stale 'on' state, re-enabling charging — permanently,
+# because the rewrite keeps the poll reading ≥ 6000, so the stale guard
+# never corrects itself (production incident 2026-07-16: stop automation
+# fired correctly, solar loop re-armed the charger one write later, only a
+# lucky-timed manual toggle broke the livelock). This script:
+#   1. is 'on' while running (including during delays) — the
+#      number.set_value guard refuses mA writes for that whole window,
+#      based on synchronous HA state instead of the lagging poll;
+#   2. writes 0 immediately (instant stop), then waits out one solar-loop
+#      period (4 s > 3 s) with suppression active before assessing the
+#      result, so the confirmation cannot be fooled by an in-flight write;
+#   3. confirms the stop stuck — switch 'off' held ≥ 4 s (≈ 4 consistent
+#      polls, filtering phantom 'off' from a failed poll read where the
+#      actual-limit sensor goes unavailable → float(0) → template renders
+#      off) — and retries up to 3 times. Re-writing 0 is toggle-budget-free:
+#      register-40000 writes are not rate-limited and repeated 0s produce at
+#      most one on→off transition (see "Rate-limit warning" in
+#      MODBUS-README.md);
+#   4. on failure (~30 s worst case) notifies and exits: suppression lifts
+#      and the solar loop resumes writing 6000 mA, degrading to
+#      minimum-power charging rather than wedging anything.
+# mode: single collapses overlapping stop requests into the running one;
+# switch.turn_on cancels a pending stop via script.turn_off (later command
+# wins).
+script:
+  peblar_ev_charger_stop:
+    alias: "Peblar EV Charger: stop (confirmed)"
+    description: >-
+      Internal: confirmed-and-retried charger stop behind
+      switch.peblar_ev_charger_charge turn_off. Do not call directly —
+      toggle the switch instead.
+    mode: single
+    max_exceeded: silent
+    sequence:
+      # Immediate stop: the 0 reaches the charger right away — suppression
+      # (script state 'on') is live milliseconds before this write, so only
+      # a write whose guard evaluated in the instant before the script
+      # started can still land after it. If that happens, the confirm loop
+      # below detects and heals it (at the cost of one extra off→on→off
+      # transition pair against the charger's toggle budget — accepted:
+      # ms-scale window vs the 3 s loop period, and the worst outcome, a
+      # 10400 rate-limit pause, coincides with wanting the charger off).
+      # Direct register write — switch.turn_off would recurse into this
+      # script.
+      - service: modbus.write_register
+        data:
+          hub: peblar
+          address: 40000
+          slave: 1
+          value:
+            - 0
+            - 0
+      # Drain: one full loop period with suppression active, so by the time
+      # the confirm loop assesses the result, nothing can be in flight. The
+      # charger is already stopped while this runs — no UX cost.
+      - delay:
+          seconds: 4
+      - repeat:
+          sequence:
+            - service: modbus.write_register
+              data:
+                hub: peblar
+                address: 40000
+                slave: 1
+                value:
+                  - 0
+                  - 0
+            # Wait for the polled switch to first read 'off' ...
+            - wait_template: "{{ is_state('switch.peblar_ev_charger_charge', 'off') }}"
+              timeout:
+                seconds: 5
+            # ... then dwell so the until-check below can require it to have
+            # HELD for 4 s — a sub-second 'off' must not count as confirmed.
+            - delay:
+                seconds: 4
+          until:
+            - condition: template
+              value_template: >-
+                {{ (is_state('switch.peblar_ev_charger_charge', 'off')
+                    and states.switch.peblar_ev_charger_charge.last_changed
+                        <= now() - timedelta(seconds=4))
+                   or repeat.index >= 3 }}
+      - if:
+          - condition: state
+            entity_id: switch.peblar_ev_charger_charge
+            state: "on"
+        then:
+          # Deliberately NOT gated on input_boolean.ev_notifications_enabled:
+          # a charger that refuses to stop is exactly the event that toggle
+          # must never silence. script.ev_notify_dispatch lives in
+          # ev_generic.yaml — the packages ship together via install.sh.
+          - service: script.ev_notify_dispatch
+            data:
+              title: "EV Charger failed to stop"
+              message: >-
+                Charger did not confirm stop after 3 attempts (~30 s) and is
+                drawing {{ states('sensor.peblar_ev_charger_power') | float(0) | round(0) }} W.
+                Rate regulation continues at minimum current — check the charger.
+              tag: ev_charger_stop_failed
+              color: red
+              priority: high
+          - service: persistent_notification.create
+            data:
+              notification_id: ev_charger_stop_failed
+              title: "EV Charger failed to stop"
+              message: >-
+                The charger did not confirm a stop after 3 write attempts.
+                Rate regulation continues at minimum current (6 A). Check the
+                charger web UI for warnings (e.g. rate-limit code 10400).
 
 # ── Recorder exclusions ────────────────────────────────────────────────────
 # Keep: sensor.peblar_ev_charger_power, session/lifetime energy, state,
