@@ -189,9 +189,9 @@ views:
           - type: divider
           - entity: input_select.ev_active_vehicle
             name: Actief Voertuig
-          - entity: sensor.ev_active_battery_capacity_kwh
+          - entity: sensor.ev_active_battery_capacity
             name: Accucapaciteit
-          - entity: sensor.ev_active_max_charge_power_kw
+          - entity: sensor.ev_active_max_charge_power
             name: Max Laadsnelheid
           - entity: input_number.ev_charging_efficiency_percent
             name: Charging Efficiency (%)
