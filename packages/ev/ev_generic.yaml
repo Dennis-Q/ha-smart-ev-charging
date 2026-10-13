@@ -286,10 +286,9 @@ template:
             {{ states('sensor.skoda_elroq_battery_percentage') }}
           {% endif %}
 
-      - name: "EV Active Battery Capacity"
+      - name: "EV Active Battery Capacity kWh"
         unique_id: ev_active_battery_capacity_kwh
         unit_of_measurement: "kWh"
-        device_class: energy_storage
         icon: mdi:battery-high
         state: >-
           {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
@@ -298,7 +297,14 @@ template:
             60.0
           {% endif %}
 
-      - name: "EV Active Max Charge Power"
+      - name: "EV Active Battery Capacity"
+        unique_id: ev_active_battery_capacity
+        unit_of_measurement: "kWh"
+        icon: mdi:battery-high
+        state: >-
+          {{ states('sensor.ev_active_battery_capacity_kwh') }}
+
+      - name: "EV Active Max Charge Power kW"
         unique_id: ev_active_max_charge_power_kw
         unit_of_measurement: "kW"
         device_class: power
@@ -309,6 +315,14 @@ template:
           {% else %}
             11.0
           {% endif %}
+
+      - name: "EV Active Max Charge Power"
+        unique_id: ev_active_max_charge_power
+        unit_of_measurement: "kW"
+        device_class: power
+        icon: mdi:flash
+        state: >-
+          {{ states('sensor.ev_active_max_charge_power_kw') }}
 
       - name: "EV Active Target Battery Percentage"
         unique_id: ev_active_target_battery_percentage
