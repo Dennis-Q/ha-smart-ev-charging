@@ -88,6 +88,15 @@ input_boolean:
     name: "EV Charge prefer Tariff over Solar"
     icon: mdi:sun-clock-outline
 
+input_select:
+  ev_active_vehicle:
+    name: "Actief Voertuig"
+    options:
+      - "Skoda Elroq"
+      - "Dacia Spring"
+    initial: "Skoda Elroq"
+    icon: mdi:car-electric
+
 input_datetime:
   ev_force_charge_timeout:
     name: "EV Force Charge Timeout"
@@ -264,6 +273,54 @@ template:
           {% endif %}
 
   - sensor:
+      # Multi-EV Proxy Sensors
+      - name: "EV Battery Percentage"
+        unique_id: ev_battery_percentage
+        unit_of_measurement: "%"
+        device_class: battery
+        icon: mdi:battery-charging
+        state: >-
+          {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
+            {{ states('sensor.kjh95v_battery') }}
+          {% else %}
+            {{ states('sensor.skoda_elroq_battery_percentage') }}
+          {% endif %}
+
+      - name: "EV Active Battery Capacity"
+        unique_id: ev_active_battery_capacity_kwh
+        unit_of_measurement: "kWh"
+        device_class: energy_storage
+        icon: mdi:battery-high
+        state: >-
+          {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
+            26.6
+          {% else %}
+            60.0
+          {% endif %}
+
+      - name: "EV Active Max Charge Power"
+        unique_id: ev_active_max_charge_power_kw
+        unit_of_measurement: "kW"
+        device_class: power
+        icon: mdi:flash
+        state: >-
+          {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
+            3.7
+          {% else %}
+            11.0
+          {% endif %}
+
+      - name: "EV Active Target Battery Percentage"
+        unique_id: ev_active_target_battery_percentage
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-100
+        state: >-
+          {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
+            {{ states('number.kjh95v_target_charge_level') }}
+          {% else %}
+            {{ states('sensor.skoda_elroq_target_battery_percentage') }}
+          {% endif %}
+
       # Determine expected charging limit
       # Ideas:
       # - Maybe let Window win if battery percentage is not met?
@@ -401,7 +458,7 @@ automation:
       - trigger: template
         value_template: >
           {% set limit = states('input_number.ev_charging_limit_force') | int(1) %}
-          {{ (states('sensor.skoda_elroq_battery_percentage') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
+          {{ (states('sensor.ev_battery_percentage') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
     actions:
       - action: input_boolean.turn_off
         target:
@@ -409,7 +466,7 @@ automation:
       - action: script.ev_notify_dispatch
         data:
           title: "EV Force Charge Complete (one-time)"
-          message: "Car fully charged"
+          message: "{{ states('input_select.ev_active_vehicle') }} fully charged"
           tag: ev_force_complete
           color: green
           priority: high
@@ -523,22 +580,35 @@ automation:
               - condition: state
                 entity_id: binary_sensor.ev_is_connected
                 state: "on"
-              # - condition: template
-              #   value_template: "{{ states('sensor.peblar_ev_charger_state') not in ['unavailable', 'unknown', 'no_ev_connected'] }}"
             sequence:
-              - action: number.set_value
-                target:
-                  entity_id: number.skoda_elroq_charge_limit # probably also handled by ev charge validation automation
-                data:
-                  value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
-              ## Not needed? Automation might get stuck when Car API is non-responsive
-              - action: switch.turn_on
-                target:
-                  entity_id: switch.skoda_elroq_charging
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.ev_active_vehicle
+                        state: "Skoda Elroq"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.skoda_elroq_charge_limit
+                        data:
+                          value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
+                      - action: switch.turn_on
+                        target:
+                          entity_id: switch.skoda_elroq_charging
+                  - conditions:
+                      - condition: state
+                        entity_id: input_select.ev_active_vehicle
+                        state: "Dacia Spring"
+                    sequence:
+                      - action: number.set_value
+                        target:
+                          entity_id: number.kjh95v_target_charge_level
+                        data:
+                          value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
               - action: script.ev_notify_dispatch
                 data:
                   title: "EV Force Charge Activated"
-                  message: "Maximum charging at 3-phase 16A"
+                  message: "Maximum charging for {{ states('input_select.ev_active_vehicle') }}"
                   tag: ev_force_active
                   color: red
                   priority: high
@@ -550,7 +620,7 @@ automation:
               - action: script.ev_notify_dispatch
                 data:
                   title: "EV Force Charge - Cable Not Connected"
-                  message: "Charger configured to 3-phase 16A. Please connect cable to start charging."
+                  message: "Charger configured to maximum power. Please connect cable to start charging."
                   tag: ev_force_cable_missing
                   color: orange
                   priority: high
@@ -563,17 +633,16 @@ automation:
     mode: single
     max_exceeded: silent
     triggers:
-      # - trigger: time_pattern
-      #   minutes: "/10" # was /2
-      - trigger: state # trigger on any state change
+      - trigger: state # trigger on active vehicle change or car limit changes
         entity_id: 
           - sensor.skoda_elroq_target_battery_percentage
+          - number.kjh95v_target_charge_level
+          - input_select.ev_active_vehicle
       - trigger: state # trigger any state not not to unknown
         entity_id: sensor.ev_expected_charging_limit
         not_to: "unknown"
       - trigger: state # trigger on 'on' state
         entity_id:
-          - binary_sensor.skoda_elroq_charger_connected
           - input_boolean.ev_force_charge_permanent
           - input_boolean.ev_force_charge_once
           - input_boolean.ev_solar_charging
@@ -594,22 +663,37 @@ automation:
         state: "on"
       - condition: template
         value_template: >
-          {% set current_limit = states('sensor.skoda_elroq_target_battery_percentage') | int %}
-          {% set expected_limit = states('sensor.ev_expected_charging_limit') | int %}
-          {{ current_limit != expected_limit }}
+          {% set current_limit = states('sensor.ev_active_target_battery_percentage') | int(0) %}
+          {% set expected_limit = states('sensor.ev_expected_charging_limit') | int(0) %}
+          {{ current_limit != expected_limit and expected_limit > 0 }}
     actions:
       - variables:
           expected_limit: "{{ states('sensor.ev_expected_charging_limit') | int }}"
-          current_limit: "{{ states('sensor.skoda_elroq_target_battery_percentage') | int }}"
-      - action: number.set_value
-        target:
-          entity_id: number.skoda_elroq_charge_limit
-        data:
-          value: "{{ expected_limit }}"
+          current_limit: "{{ states('sensor.ev_active_target_battery_percentage') | int }}"
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ active_vehicle == 'Dacia Spring' }}"
+            sequence:
+              - action: number.set_value
+                target:
+                  entity_id: number.kjh95v_target_charge_level
+                data:
+                  value: "{{ expected_limit }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ active_vehicle == 'Skoda Elroq' }}"
+            sequence:
+              - action: number.set_value
+                target:
+                  entity_id: number.skoda_elroq_charge_limit
+                data:
+                  value: "{{ expected_limit }}"
       - action: script.ev_notify_dispatch
         data:
           title: "EV Charging Limit Corrected"
-          message: "Corrected from {{ current_limit }}% to {{ expected_limit }}%"
+          message: "{{ active_vehicle }}: corrected from {{ current_limit }}% to {{ expected_limit }}%"
           tag: ev_limit_corrected
           color: yellow
           priority: high

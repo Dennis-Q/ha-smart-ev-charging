@@ -187,10 +187,12 @@ views:
           - entity: input_datetime.ev_force_charge_timeout
             name: Force Charge Timeout At
           - type: divider
-          - entity: input_number.ev_battery_capacity_kwh
-            name: Battery Capacity (kWh)
-          - entity: input_number.ev_charger_max_power_kw
-            name: Charger Maximum Power (kW)
+          - entity: input_select.ev_active_vehicle
+            name: Actief Voertuig
+          - entity: sensor.ev_active_battery_capacity_kwh
+            name: Accucapaciteit
+          - entity: sensor.ev_active_max_charge_power_kw
+            name: Max Laadsnelheid
           - entity: input_number.ev_charging_efficiency_percent
             name: Charging Efficiency (%)
           - entity: input_number.ev_power_buffer_watts
@@ -205,19 +207,19 @@ views:
           - entity: input_number.ev_charging_limit_force
             name: Force Charging Limit (%)
           - type: divider
-          - entity: number.skoda_elroq_charge_limit
-            name: Current Car Limit
+          - entity: sensor.ev_active_target_battery_percentage
+            name: Huidige Auto Limiet
       - type: entities
         title: EV Charging Status
         entities:
-          - entity: binary_sensor.skoda_elroq_charger_connected
-            name: Cable Connected
-          - entity: sensor.skoda_elroq_battery_percentage
-            name: Battery Level
-          - entity: sensor.skoda_elroq_range
-            name: Range (left)
-          - entity: sensor.skoda_elroq_target_battery_percentage
-            name: Car Charging Limit
+          - entity: input_select.ev_active_vehicle
+            name: Actief Voertuig
+          - entity: binary_sensor.ev_is_connected
+            name: Kabel Aangesloten
+          - entity: sensor.ev_battery_percentage
+            name: Accuniveau
+          - entity: sensor.ev_active_target_battery_percentage
+            name: Auto Laadlimiet
           - entity: sensor.ev_expected_charging_limit
             name: Expected Charging Limit
           - entity: sensor.ev_charging_mode
@@ -229,7 +231,6 @@ views:
           - entity: sensor.peblar_ev_charger_state
             name: Peblar Charger State
           - entity: binary_sensor.ev_is_charging
-          - entity: binary_sensor.ev_is_connected
       - type: entities
         title: Dynamic Tariff Information
         entities:
