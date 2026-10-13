@@ -186,18 +186,30 @@ template:
         unique_id: ev_cheapest_hours_in_window
         state: >
           {# State is JSON string of selected hours #}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+          {% set entsoe_prices = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set raw_list = frank_prices if (frank_prices is not none and frank_prices | length > 0) else entsoe_prices %}
           {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
           {% set window_start = states('sensor.ev_charging_window_start_time') %}
           {% set window_end = states('sensor.ev_charging_window_end_time') %}
           {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
 
-          {% if prices_raw is none or hours_needed == 0 or
+          {% if raw_list is none or raw_list | length == 0 or hours_needed == 0 or
                 window_start in ['unknown','unavailable','None'] or
                 window_end in ['unknown','unavailable','None'] %}
             []
           {% else %}
-            {% set window_prices = prices_raw
+            {% set ns = namespace(items=[]) %}
+            {% for item in raw_list %}
+              {% set t_raw = item['from'] if 'from' in item else item.from if item.from is defined else item['time'] if 'time' in item else item.time if item.time is defined else none %}
+              {% if t_raw is not none %}
+                {% set dt = as_local(as_datetime(t_raw)) if as_datetime(t_raw) is not none else none %}
+                {% set t_str = dt.strftime('%Y-%m-%d %H:%M:%S') if dt is not none else (t_raw | string).replace('T', ' ')[:19] %}
+                {% set p_val = item['price'] if 'price' in item else item.price if item.price is defined else 0.0 %}
+                {% set ns.items = ns.items + [{'time': t_str, 'price': p_val | float(0)}] %}
+              {% endif %}
+            {% endfor %}
+            {% set window_prices = ns.items
                  | selectattr('time', '>=', window_start)
                  | selectattr('time', '<', window_end)
                  | list %}
@@ -218,6 +230,13 @@ template:
             {% endif %}
           {% endif %}
         attributes:
+          price_source: >-
+            {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+            {% if frank_prices is not none and frank_prices | length > 0 %}
+              Frank Energie
+            {% else %}
+              ENTSO-E
+            {% endif %}
           count: >
             {% set s = states('sensor.ev_cheapest_hours_in_window') %}
             {% if s in ['unknown','unavailable','None',''] %}
@@ -269,21 +288,30 @@ template:
           {% endif %}
 
       # 7) Sufficient known hours in window (based purely on available price slots)
-      # average_electricity_price sensor is of the entso-e platform (default names)
-      # not sure how useful this currently is, does not take into account hours that already passed.
       - name: EV Sufficient Known Hours In Window
         unique_id: ev_sufficient_known_hours_in_window
         state: >
           {% set window_start = states('sensor.ev_charging_window_start_time') %}
           {% set window_end = states('sensor.ev_charging_window_end_time') %}
           {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
-          {% if prices_raw is none or hours_needed == 0 or
+          {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+          {% set entsoe_prices = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set raw_list = frank_prices if (frank_prices is not none and frank_prices | length > 0) else entsoe_prices %}
+          {% if raw_list is none or raw_list | length == 0 or hours_needed == 0 or
                 window_start in ['unknown','unavailable','None'] or
                 window_end in ['unknown','unavailable','None'] %}
             false
           {% else %}
-            {% set window_prices = prices_raw
+            {% set ns = namespace(items=[]) %}
+            {% for item in raw_list %}
+              {% set t_raw = item['from'] if 'from' in item else item.from if item.from is defined else item['time'] if 'time' in item else item.time if item.time is defined else none %}
+              {% if t_raw is not none %}
+                {% set dt = as_local(as_datetime(t_raw)) if as_datetime(t_raw) is not none else none %}
+                {% set t_str = dt.strftime('%Y-%m-%d %H:%M:%S') if dt is not none else (t_raw | string).replace('T', ' ')[:19] %}
+                {% set ns.items = ns.items + [{'time': t_str}] %}
+              {% endif %}
+            {% endfor %}
+            {% set window_prices = ns.items
                  | selectattr('time', '>=', window_start)
                  | selectattr('time', '<', window_end)
                  | list %}
@@ -297,24 +325,55 @@ template:
         unique_id: ev_charging_debug_info
         state: >
           {# Concise debug summary (strictly <= 255 chars for Home Assistant state limit) #}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+          {% set entsoe_prices = state_attr('sensor.average_electricity_price', 'prices') %}
+          {% set raw_list = frank_prices if (frank_prices is not none and frank_prices | length > 0) else entsoe_prices %}
           {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
-          {% if prices_raw is not none %}
+          {% if raw_list is not none and raw_list | length > 0 %}
             {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
-            {% set future_prices = prices_raw | rejectattr('time', '<', cutoff) | list %}
-            {{ future_prices | length }}/{{ prices_raw | length }}h avail, need {{ hours_needed }}h
+            {% set ns = namespace(future=[]) %}
+            {% for item in raw_list %}
+              {% set t_raw = item['from'] if 'from' in item else item.from if item.from is defined else item['time'] if 'time' in item else item.time if item.time is defined else none %}
+              {% if t_raw is not none %}
+                {% set dt = as_local(as_datetime(t_raw)) if as_datetime(t_raw) is not none else none %}
+                {% set t_str = dt.strftime('%Y-%m-%d %H:%M:%S') if dt is not none else (t_raw | string).replace('T', ' ')[:19] %}
+                {% if t_str >= cutoff %}
+                  {% set ns.future = ns.future + [t_str] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.future | length }}/{{ raw_list | length }}h avail, need {{ hours_needed }}h
           {% else %}
             need {{ hours_needed }}h (no price data)
           {% endif %}
         attributes:
+          price_source: >-
+            {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+            {% if frank_prices is not none and frank_prices | length > 0 %}
+              Frank Energie
+            {% else %}
+              ENTSO-E
+            {% endif %}
           future_hours_available: >-
-            {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
-            {% if prices_raw is none %}
+            {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+            {% set entsoe_prices = state_attr('sensor.average_electricity_price', 'prices') %}
+            {% set raw_list = frank_prices if (frank_prices is not none and frank_prices | length > 0) else entsoe_prices %}
+            {% if raw_list is none or raw_list | length == 0 %}
               0/0
             {% else %}
               {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
-              {% set future_prices = prices_raw | rejectattr('time', '<', cutoff) | list %}
-              {{ future_prices | length }}/{{ prices_raw | length }}
+              {% set ns = namespace(future=[]) %}
+              {% for item in raw_list %}
+                {% set t_raw = item['from'] if 'from' in item else item.from if item.from is defined else item['time'] if 'time' in item else item.time if item.time is defined else none %}
+                {% if t_raw is not none %}
+                  {% set dt = as_local(as_datetime(t_raw)) if as_datetime(t_raw) is not none else none %}
+                  {% set t_str = dt.strftime('%Y-%m-%d %H:%M:%S') if dt is not none else (t_raw | string).replace('T', ' ')[:19] %}
+                  {% if t_str >= cutoff %}
+                    {% set ns.future = ns.future + [t_str] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.future | length }}/{{ raw_list | length }}
             {% endif %}
           hours_needed: "{{ states('sensor.ev_hours_needed_for_charging') }}"
           night_window: >-
@@ -328,22 +387,36 @@ template:
           price_allowed: "{{ states('binary_sensor.ev_window_price_allowed') }}"
           current_price: "{{ states('sensor.frank_energie_prices_current_electricity_price_all_in') }}"
           details: >-
-            {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
+            {% set frank_prices = state_attr('sensor.frank_energie_prices_current_electricity_price_all_in', 'prices') %}
+            {% set entsoe_prices = state_attr('sensor.average_electricity_price', 'prices') %}
+            {% set raw_list = frank_prices if (frank_prices is not none and frank_prices | length > 0) else entsoe_prices %}
+            {% set src_name = 'Frank Energie' if (frank_prices is not none and frank_prices | length > 0) else 'ENTSO-E' %}
             {% set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) %}
             {% set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) %}
             {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
             {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
             {% set window_start = states('sensor.ev_charging_window_start_time') %}
             {% set window_end = states('sensor.ev_charging_window_end_time') %}
-            {% if prices_raw is none %}
+            {% if raw_list is none or raw_list | length == 0 %}
               {% set future_count = 0 %}
               {% set total_count = 0 %}
             {% else %}
               {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
-              {% set future_prices = prices_raw | rejectattr('time', '<', cutoff) | list %}
-              {% set future_count = future_prices | length %}
-              {% set total_count = prices_raw | length %}
+              {% set ns = namespace(future=[]) %}
+              {% for item in raw_list %}
+                {% set t_raw = item['from'] if 'from' in item else item.from if item.from is defined else item['time'] if 'time' in item else item.time if item.time is defined else none %}
+                {% if t_raw is not none %}
+                  {% set dt = as_local(as_datetime(t_raw)) if as_datetime(t_raw) is not none else none %}
+                  {% set t_str = dt.strftime('%Y-%m-%d %H:%M:%S') if dt is not none else (t_raw | string).replace('T', ' ')[:19] %}
+                  {% if t_str >= cutoff %}
+                    {% set ns.future = ns.future + [t_str] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              {% set future_count = ns.future | length %}
+              {% set total_count = raw_list | length %}
             {% endif %}
+            Price source: {{ src_name }}
             Future hours available: {{ future_count }}/{{ total_count }}
             Hours needed: {{ hours_needed }} (selecting {{ hours_int }} hours)
             Now: {{ now().isoformat() }}
