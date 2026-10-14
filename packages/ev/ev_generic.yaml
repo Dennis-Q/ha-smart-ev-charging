@@ -317,47 +317,13 @@ template:
           {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
             {{ states('number.kjh95v_target_charge_level') }}
           {% else %}
-            {{ states('sensor.skoda_elroq_target_battery_percentage') }}
+            {% set s = states('sensor.skoda_elroq_target_battery_percentage') %}
+            {% if s not in ['unknown', 'unavailable', 'None'] %}
+              {{ s }}
+            {% else %}
+              {{ states('number.skoda_elroq_charge_limit') }}
+            {% endif %}
           {% endif %}
-
-      # Determine expected charging limit
-      # Ideas:
-      # - Maybe let Window win if battery percentage is not met?
-      # - Or let Window win when in cheapest hours (not just window)
-      # - Or let Window win when in cheapest hours (not just window) and less than 10% difference?
-      # - Maybe include 'expected solar left' as well
-      - name: "EV Expected Charging Limit"
-        unique_id: ev_expected_charging_limit
-        unit_of_measurement: "%"
-        state: >
-          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
-          {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
-          {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
-          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
-          {% set price_allowed = is_state('binary_sensor.ev_window_price_allowed', 'on') %}
-          {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
-          {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
-          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
-          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
-                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
-                                      is_state(batt_assist_e, 'on') %}
-          {% if is_force_charging %}
-            {{ states('input_number.ev_charging_limit_force') | int }}
-          {% elif battery_assist_on %}
-            {{ states('input_number.ev_charging_limit_solar') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window and price_allowed %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization and price_allowed %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif solar_enabled and solar_viable %}
-            {{ states('input_number.ev_charging_limit_solar') | int }}
-          {% elif is_window_active and tarif_optimization and is_in_cheapest_window and price_allowed %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif is_window_active and not tarif_optimization and price_allowed %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% endif %}
-
 
       - name: "EV Charging Mode"
         unique_id: ev_charging_mode
@@ -391,6 +357,68 @@ template:
           {% else %}
             none
           {% endif %}
+
+      # Determine expected charging limit
+      - name: "EV Expected Charging Limit"
+        unique_id: ev_expected_charging_limit
+        unit_of_measurement: "%"
+        state: >
+          {% set mode = states('sensor.ev_charging_mode') %}
+          {% set is_force = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
+          {% set window_enabled = is_state('input_boolean.ev_window_charging', 'on') %}
+          {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
+          {% set prefer_tariff = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
+          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
+          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
+                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
+                                      is_state(batt_assist_e, 'on') %}
+          {% set limit_force = states('input_number.ev_charging_limit_force') | int(100) %}
+          {% set limit_solar = states('input_number.ev_charging_limit_solar') | int(100) %}
+          {% set limit_window = states('input_number.ev_charging_limit_window') | int(80) %}
+          {% set car_limit = states('sensor.ev_active_target_battery_percentage') | int(limit_window) %}
+
+          {% if is_force or mode == 'force' %}
+            {{ limit_force }}
+          {% elif battery_assist_on or mode in ['battery_assist', 'solar'] %}
+            {{ limit_solar }}
+          {% elif mode in ['cheapest', 'window'] %}
+            {{ limit_window }}
+          {% elif window_enabled and solar_enabled %}
+            {{ limit_window if prefer_tariff else limit_solar }}
+          {% elif window_enabled %}
+            {{ limit_window }}
+          {% elif solar_enabled %}
+            {{ limit_solar }}
+          {% else %}
+            {{ car_limit }}
+          {% endif %}
+        attributes:
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+          limit_source: >-
+            {% set mode = states('sensor.ev_charging_mode') %}
+            {% set is_force = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
+            {% set window_enabled = is_state('input_boolean.ev_window_charging', 'on') %}
+            {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
+            {% set prefer_tariff = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
+            {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
+            {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
+                                        batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
+                                        is_state(batt_assist_e, 'on') %}
+            {% if is_force or mode == 'force' %}
+              force
+            {% elif battery_assist_on %}
+              battery_assist
+            {% elif mode in ['solar', 'cheapest', 'window'] %}
+              {{ mode }}
+            {% elif window_enabled and solar_enabled %}
+              {{ 'window (standby)' if prefer_tariff else 'solar (standby)' }}
+            {% elif window_enabled %}
+              window (standby)
+            {% elif solar_enabled %}
+              solar (standby)
+            {% else %}
+              car_default
+            {% endif %}
 
       # Debug sensor - to be decided if this is really required.
       - name: "EV Debug Solar Values"
