@@ -317,12 +317,7 @@ template:
           {% if is_state('input_select.ev_active_vehicle', 'Dacia Spring') %}
             {{ states('number.kjh95v_target_charge_level') }}
           {% else %}
-            {% set s = states('sensor.skoda_elroq_target_battery_percentage') %}
-            {% if s not in ['unknown', 'unavailable', 'None'] %}
-              {{ s }}
-            {% else %}
-              {{ states('number.skoda_elroq_charge_limit') }}
-            {% endif %}
+            {{ states('number.skoda_elroq_charge_limit') }}
           {% endif %}
 
       - name: "EV Charging Mode"
@@ -662,7 +657,7 @@ automation:
     triggers:
       - trigger: state # trigger on active vehicle change or car limit changes
         entity_id: 
-          - sensor.skoda_elroq_target_battery_percentage
+          - number.skoda_elroq_charge_limit
           - number.kjh95v_target_charge_level
           - input_select.ev_active_vehicle
       - trigger: state # trigger any state not not to unknown
