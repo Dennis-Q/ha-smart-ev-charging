@@ -398,7 +398,7 @@ views:
               - type: attribute
                 entity: sensor.ev_energy_prices_data
                 attribute: stale
-                name: Keeping last known prices (source unavailable)
+                name: Source unavailable (keeping last known prices)
           - type: markdown
             content: >-
               Sensor with a `prices` attribute (Frank Energie or ENTSO-E,

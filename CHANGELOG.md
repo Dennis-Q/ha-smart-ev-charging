@@ -21,10 +21,18 @@ All notable changes to this project will be documented here.
   today when its tomorrow-fetch fails, which would make the same hour count twice.
 - **Price data survives a provider dropout.** When the price sensor has no prices (unavailable,
   not loaded yet after a restart), `sensor.ev_energy_prices_data` keeps the previous slots that
-  have not ended yet and sets `stale: true`. Fixes the stop seen on prod 2026-10-13 23:13: ENTSO-E
-  went `unavailable` mid-charge, the cheapest list emptied and the mode dropped to `none`. Prices
-  are per timestamp, so published slots stay valid; only a dropout lasting beyond the last known
-  slot still stops window charging.
+  have not ended yet and sets `stale: true`. Fixes the stop seen on prod 2026-10-13 23:13:
+  ENTSO-E went `unavailable` mid-charge, the cheapest list emptied and the mode dropped to
+  `none`. Slots are absolute timestamps and only not-yet-ended ones are kept, so old prices are
+  never applied to a later day: once the last known slot ends (at most ~35 h), there is no price
+  data and cheapest-hours charging stops, as before.
+- **`ev_price_data_stale_notification`** — push + persistent notification when the price source
+  has given no prices for an hour while tariff optimisation or the max price limit is on; says
+  until when prices are still known. Persistent notification clears when prices return.
+- **Prefer tariff over solar also works without tariff optimisation** (from Mik3yZ's branch).
+  With optimisation off, an active window — every slot at or below the max price, when that
+  limit is on — now wins over solar (mode `window`). With optimisation on, nothing changes,
+  except that the branch no longer reports `cheapest` while optimisation is off.
 - **Window max price** — `input_boolean.ev_window_max_price_enabled` +
   `input_number.ev_window_charging_max_price` (EUR/kWh; `apply_defaults`: 0.32, limit off — opt in, so an expensive night still charges by default) and
   `binary_sensor.ev_window_price_allowed`. While enabled, `window` and `cheapest` only charge
@@ -45,7 +53,8 @@ All notable changes to this project will be documented here.
 
 ### Thanks
 - Mik3yZ — the max price limit, the Frank Energie switch and the debug-info fix come from their
-  `window-charging-max-price` branch, reworked onto the shared price data sensor.
+  `window-charging-max-price` branch, reworked onto the shared price data sensor; the
+  prefer-tariff change is theirs as well.
 
 ## [0.2.16] – 2026-07-27
 

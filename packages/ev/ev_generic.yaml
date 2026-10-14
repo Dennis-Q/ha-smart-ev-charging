@@ -291,7 +291,9 @@ template:
             {{ states('input_number.ev_charging_limit_force') | int }}
           {% elif battery_assist_on %}
             {{ states('input_number.ev_charging_limit_solar') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window %}
+            {{ states('input_number.ev_charging_limit_window') | int }}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
             {{ states('input_number.ev_charging_limit_window') | int }}
           {% elif solar_enabled and solar_viable %}
             {{ states('input_number.ev_charging_limit_solar') | int }}
@@ -321,8 +323,12 @@ template:
             force
           {% elif battery_assist_on %}
             battery_assist
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and is_in_cheapest_window %}
+          {# Prefer tariff over solar: with optimisation the cheapest slots win, without it the
+             whole window (with the max price limit: every slot cheap enough) wins #}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window %}
             cheapest
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
+            window
           {% elif solar_enabled and solar_viable %}
             solar
           {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}

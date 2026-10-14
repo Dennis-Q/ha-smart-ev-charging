@@ -371,6 +371,72 @@ automation:
 #     (stop / single_phase / three_phase); transitions only
 #   - All other input_*.ev_*, binary_sensor.ev_*, automations, scripts
 
+  - id: ev_price_data_stale_notification
+    alias: "EV: Price data stale notification"
+    description: >-
+      Notifies when the price sensor (input_text.ev_price_entity) has given no
+      prices for an hour while tariff optimisation or the window max price
+      limit is in use. Charging keeps using the already-published slots until
+      they end; after that cheapest-hours charging stops. Clears when prices
+      return.
+    mode: single
+    triggers:
+      - trigger: template
+        value_template: "{{ state_attr('sensor.ev_energy_prices_data', 'stale') == true }}"
+        for: "01:00:00"
+        id: stale
+      - trigger: template
+        value_template: "{{ state_attr('sensor.ev_energy_prices_data', 'stale') == false }}"
+        id: resolved
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: stale
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity_id: input_boolean.ev_dynamic_tariff_optimization
+                    state: "on"
+                  - condition: state
+                    entity_id: input_boolean.ev_window_max_price_enabled
+                    state: "on"
+            sequence:
+              - variables:
+                  slots: "{{ state_attr('sensor.ev_energy_prices_data', 'slots') or [] }}"
+                  known_until: >-
+                    {{ (slots | last).ts | timestamp_custom('%a %H:%M') if slots | length > 0 else 'none left' }}
+                  source: "{{ state_attr('sensor.ev_energy_prices_data', 'source') }}"
+              - action: script.ev_notify_dispatch
+                data:
+                  title: "EV: Price data unavailable"
+                  message: >-
+                    {{ source }} has given no prices for an hour. Known prices
+                    until: {{ known_until }}. After that, cheapest-hours charging
+                    stops until prices return.
+                  tag: ev_price_data_stale
+                  color: orange
+                  priority: high
+              - action: persistent_notification.create
+                data:
+                  notification_id: ev_price_data_stale
+                  title: "EV: Price data unavailable"
+                  message: >-
+                    `{{ source }}` has given no prices for an hour.
+                    Charging keeps using the already-published slots, known
+                    until **{{ known_until }}**. After that, cheapest-hours
+                    charging stops until prices return.
+
+                    Check the price integration, or **EV Charging → Advanced
+                    settings → Price data**.
+          - conditions:
+              - condition: trigger
+                id: resolved
+            sequence:
+              - action: persistent_notification.dismiss
+                data:
+                  notification_id: ev_price_data_stale
+
   - id: ev_power_entity_unit_mismatch_notification
     alias: "EV: Power entity unit mismatch notification"
     description: >-

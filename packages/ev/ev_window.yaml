@@ -132,8 +132,9 @@ template:
           {{ fresh | length if fresh | length > 0 else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list | length }}
         attributes:
           source: "{{ source }}"
-          # true while the source gives no prices and the previous slots are kept
-          stale: "{{ fresh | length == 0 and (this.attributes.get('slots', []) | length > 0) }}"
+          # true while the source gives no prices; the slots are then the kept
+          # ones (state 0 = none of them left)
+          stale: "{{ fresh | length == 0 }}"
           slots_per_hour: "{{ fresh_per_hour if fresh | length > 0 else this.attributes.get('slots_per_hour', 1) | int(1) }}"
           slots: >-
             {%- set prev = this.attributes.get('slots', []) -%}
