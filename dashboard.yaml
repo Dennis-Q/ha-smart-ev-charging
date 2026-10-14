@@ -395,6 +395,10 @@ views:
                 entity: sensor.ev_energy_prices_data
                 attribute: slots_per_hour
                 name: Slots per hour
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: stale
+                name: Keeping last known prices (source unavailable)
           - type: markdown
             content: >-
               Sensor with a `prices` attribute (Frank Energie or ENTSO-E,

@@ -95,7 +95,7 @@ template:
           source: >-
             {%- set e = states('input_text.ev_price_entity') | trim -%}
             {{ e if e not in ['', 'unknown', 'unavailable'] else 'sensor.frank_energie_prices_current_electricity_price_all_in' }}
-          slots: >-
+          fresh: >-
             {%- set raw = state_attr(source, 'prices') -%}
             {#- De-duplicate by slot timestamp, keeping the first occurrence.
                 The Frank Energie integration appends a second copy of today's
@@ -113,18 +113,32 @@ template:
               {%- endif -%}
             {%- endfor -%}
             {{ ns.slots | sort(attribute='ts') | to_json }}
-          slots_per_hour: >-
-            {%- set step = (slots[1].ts - slots[0].ts) if slots | length >= 2 else 3600 -%}
+          fresh_per_hour: >-
+            {%- set step = (fresh[1].ts - fresh[0].ts) if fresh | length >= 2 else 3600 -%}
             {{ ((3600 // step) | int) if step > 0 and step <= 3600 else 1 }}
+    # Source empty or unavailable (ENTSO-E went unavailable mid-charge on
+    # 2026-10-13 23:13 and emptied the cheapest list): keep the previous slots
+    # that have not ended yet. Prices are per timestamp, so already published
+    # slots stay valid; a trigger-based sensor also restores them after a
+    # restart, before the provider has loaded. Lives in the entity templates
+    # because `this` is not available in the actions variables.
     sensor:
       - name: "EV Energy Prices Data"
         unique_id: ev_energy_prices_data
         icon: mdi:cash-clock
-        state: "{{ slots | length }}"
+        state: >-
+          {%- set prev = this.attributes.get('slots', []) -%}
+          {%- set step = 3600 // (this.attributes.get('slots_per_hour', 1) | int(1)) -%}
+          {{ fresh | length if fresh | length > 0 else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list | length }}
         attributes:
           source: "{{ source }}"
-          slots_per_hour: "{{ slots_per_hour }}"
-          slots: "{{ slots }}"
+          # true while the source gives no prices and the previous slots are kept
+          stale: "{{ fresh | length == 0 and (this.attributes.get('slots', []) | length > 0) }}"
+          slots_per_hour: "{{ fresh_per_hour if fresh | length > 0 else this.attributes.get('slots_per_hour', 1) | int(1) }}"
+          slots: >-
+            {%- set prev = this.attributes.get('slots', []) -%}
+            {%- set step = 3600 // (this.attributes.get('slots_per_hour', 1) | int(1)) -%}
+            {{ fresh if fresh | length > 0 else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list }}
 
   - binary_sensor:
       # Off when the max price limit is enabled and the current slot is above

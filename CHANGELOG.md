@@ -19,6 +19,12 @@ All notable changes to this project will be documented here.
   `sensor.hba_energy_prices_data`, so the parsing can later become a shared adapter without
   touching consumers. Duplicate timestamps are dropped: Frank Energie appends a second copy of
   today when its tomorrow-fetch fails, which would make the same hour count twice.
+- **Price data survives a provider dropout.** When the price sensor has no prices (unavailable,
+  not loaded yet after a restart), `sensor.ev_energy_prices_data` keeps the previous slots that
+  have not ended yet and sets `stale: true`. Fixes the stop seen on prod 2026-10-13 23:13: ENTSO-E
+  went `unavailable` mid-charge, the cheapest list emptied and the mode dropped to `none`. Prices
+  are per timestamp, so published slots stay valid; only a dropout lasting beyond the last known
+  slot still stops window charging.
 - **Window max price** — `input_boolean.ev_window_max_price_enabled` +
   `input_number.ev_window_charging_max_price` (EUR/kWh; `apply_defaults`: 0.32, limit off — opt in, so an expensive night still charges by default) and
   `binary_sensor.ev_window_price_allowed`. While enabled, `window` and `cheapest` only charge
