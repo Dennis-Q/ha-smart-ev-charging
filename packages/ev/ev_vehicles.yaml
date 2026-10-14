@@ -433,3 +433,4 @@ automation:
               entity_id: input_select.ev_active_vehicle
             data:
               option: "{{ opts[0] }}"
+
