@@ -1,0 +1,435 @@
+### Multi-EV Dynamic Vehicle Management & Proxy Layer
+#
+# Provides 5 configurable vehicle slots.
+# Vehicles can be enabled/added, configured, and disabled/deleted
+# directly from the dashboard without any code changes in YAML.
+
+input_select:
+  ev_active_vehicle:
+    name: "Actief Voertuig"
+    icon: mdi:car-electric
+    options:
+      - "Skoda Elroq"
+      - "Dacia Spring"
+    initial: "Skoda Elroq"
+
+input_boolean:
+  ev_v1_enabled:
+    name: "Voertuig 1 Ingeschakeld"
+    icon: mdi:car-check
+    initial: true
+  ev_v2_enabled:
+    name: "Voertuig 2 Ingeschakeld"
+    icon: mdi:car-check
+    initial: true
+  ev_v3_enabled:
+    name: "Voertuig 3 Ingeschakeld"
+    icon: mdi:car-check
+    initial: false
+  ev_v4_enabled:
+    name: "Voertuig 4 Ingeschakeld"
+    icon: mdi:car-check
+    initial: false
+  ev_v5_enabled:
+    name: "Voertuig 5 Ingeschakeld"
+    icon: mdi:car-check
+    initial: false
+
+input_text:
+  # Voertuig 1
+  ev_v1_name:
+    name: "Voertuig 1 Naam"
+    icon: mdi:car-info
+    initial: "Skoda Elroq"
+    max: 50
+  ev_v1_battery_sensor:
+    name: "Voertuig 1 Batterij Sensor"
+    icon: mdi:code-tags
+    initial: "sensor.skoda_elroq_battery_percentage"
+    max: 100
+  ev_v1_target_limit_entity:
+    name: "Voertuig 1 Doellimiet Entity"
+    icon: mdi:code-tags
+    initial: "number.skoda_elroq_charge_limit"
+    max: 100
+  ev_v1_charge_switch_entity:
+    name: "Voertuig 1 Laadschakelaar Entity"
+    icon: mdi:power
+    initial: "switch.skoda_elroq_charging"
+    max: 100
+
+  # Voertuig 2
+  ev_v2_name:
+    name: "Voertuig 2 Naam"
+    icon: mdi:car-info
+    initial: "Dacia Spring"
+    max: 50
+  ev_v2_battery_sensor:
+    name: "Voertuig 2 Batterij Sensor"
+    icon: mdi:code-tags
+    initial: "sensor.kjh95v_battery"
+    max: 100
+  ev_v2_target_limit_entity:
+    name: "Voertuig 2 Doellimiet Entity"
+    icon: mdi:code-tags
+    initial: "number.kjh95v_target_charge_level"
+    max: 100
+  ev_v2_charge_switch_entity:
+    name: "Voertuig 2 Laadschakelaar Entity"
+    icon: mdi:power
+    initial: ""
+    max: 100
+
+  # Voertuig 3
+  ev_v3_name:
+    name: "Voertuig 3 Naam"
+    icon: mdi:car-info
+    initial: "Voertuig 3"
+    max: 50
+  ev_v3_battery_sensor:
+    name: "Voertuig 3 Batterij Sensor"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v3_target_limit_entity:
+    name: "Voertuig 3 Doellimiet Entity"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v3_charge_switch_entity:
+    name: "Voertuig 3 Laadschakelaar Entity"
+    icon: mdi:power
+    initial: ""
+    max: 100
+
+  # Voertuig 4
+  ev_v4_name:
+    name: "Voertuig 4 Naam"
+    icon: mdi:car-info
+    initial: "Voertuig 4"
+    max: 50
+  ev_v4_battery_sensor:
+    name: "Voertuig 4 Batterij Sensor"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v4_target_limit_entity:
+    name: "Voertuig 4 Doellimiet Entity"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v4_charge_switch_entity:
+    name: "Voertuig 4 Laadschakelaar Entity"
+    icon: mdi:power
+    initial: ""
+    max: 100
+
+  # Voertuig 5
+  ev_v5_name:
+    name: "Voertuig 5 Naam"
+    icon: mdi:car-info
+    initial: "Voertuig 5"
+    max: 50
+  ev_v5_battery_sensor:
+    name: "Voertuig 5 Batterij Sensor"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v5_target_limit_entity:
+    name: "Voertuig 5 Doellimiet Entity"
+    icon: mdi:code-tags
+    initial: ""
+    max: 100
+  ev_v5_charge_switch_entity:
+    name: "Voertuig 5 Laadschakelaar Entity"
+    icon: mdi:power
+    initial: ""
+    max: 100
+
+input_number:
+  # Voertuig 1
+  ev_v1_battery_capacity_kwh:
+    name: "Voertuig 1 Accucapaciteit"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    initial: 60.0
+    icon: mdi:battery-high
+  ev_v1_max_charge_power_kw:
+    name: "Voertuig 1 Max Laadvermogen"
+    unit_of_measurement: "kW"
+    min: 1.0
+    max: 22.0
+    step: 0.1
+    initial: 11.0
+    icon: mdi:lightning-bolt-circle
+
+  # Voertuig 2
+  ev_v2_battery_capacity_kwh:
+    name: "Voertuig 2 Accucapaciteit"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    initial: 26.6
+    icon: mdi:battery-high
+  ev_v2_max_charge_power_kw:
+    name: "Voertuig 2 Max Laadvermogen"
+    unit_of_measurement: "kW"
+    min: 1.0
+    max: 22.0
+    step: 0.1
+    initial: 3.7
+    icon: mdi:lightning-bolt-circle
+
+  # Voertuig 3
+  ev_v3_battery_capacity_kwh:
+    name: "Voertuig 3 Accucapaciteit"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    initial: 60.0
+    icon: mdi:battery-high
+  ev_v3_max_charge_power_kw:
+    name: "Voertuig 3 Max Laadvermogen"
+    unit_of_measurement: "kW"
+    min: 1.0
+    max: 22.0
+    step: 0.1
+    initial: 11.0
+    icon: mdi:lightning-bolt-circle
+
+  # Voertuig 4
+  ev_v4_battery_capacity_kwh:
+    name: "Voertuig 4 Accucapaciteit"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    initial: 60.0
+    icon: mdi:battery-high
+  ev_v4_max_charge_power_kw:
+    name: "Voertuig 4 Max Laadvermogen"
+    unit_of_measurement: "kW"
+    min: 1.0
+    max: 22.0
+    step: 0.1
+    initial: 11.0
+    icon: mdi:lightning-bolt-circle
+
+  # Voertuig 5
+  ev_v5_battery_capacity_kwh:
+    name: "Voertuig 5 Accucapaciteit"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    initial: 60.0
+    icon: mdi:battery-high
+  ev_v5_max_charge_power_kw:
+    name: "Voertuig 5 Max Laadvermogen"
+    unit_of_measurement: "kW"
+    min: 1.0
+    max: 22.0
+    step: 0.1
+    initial: 11.0
+    icon: mdi:lightning-bolt-circle
+
+script:
+  ev_add_next_vehicle:
+    alias: "EV: Voeg Nieuw Voertuig Toe"
+    description: "Schakelt het eerstvolgende vrije voertuigslot in"
+    icon: mdi:car-plus
+    sequence:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ev_v1_enabled
+                state: "off"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ev_v1_enabled
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ev_v2_enabled
+                state: "off"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ev_v2_enabled
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ev_v3_enabled
+                state: "off"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ev_v3_enabled
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ev_v4_enabled
+                state: "off"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ev_v4_enabled
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.ev_v5_enabled
+                state: "off"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.ev_v5_enabled
+
+template:
+  - sensor:
+      - name: "EV Battery Percentage"
+        unique_id: ev_battery_percentage
+        unit_of_measurement: "%"
+        device_class: battery
+        icon: mdi:battery-charging
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(sensor='') %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.sensor = states('input_text.ev_v' ~ i ~ '_battery_sensor') | trim %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.sensor not in ['', 'unknown', 'unavailable', 'none'] and states(ns.sensor) not in ['unknown', 'unavailable', 'none', ''] %}
+            {{ states(ns.sensor) | float(0) | round(1) }}
+          {% else %}
+            0.0
+          {% endif %}
+        attributes:
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+
+      - name: "EV Active Battery Capacity"
+        unique_id: ev_active_battery_capacity_kwh
+        unit_of_measurement: "kWh"
+        icon: mdi:battery-high
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(val=60.0) %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.val = states('input_number.ev_v' ~ i ~ '_battery_capacity_kwh') | float(60.0) %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.val | round(1) }}
+        attributes:
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+
+      - name: "EV Active Max Charge Power"
+        unique_id: ev_active_max_charge_power_kw
+        unit_of_measurement: "kW"
+        device_class: power
+        icon: mdi:flash
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(val=11.0) %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.val = states('input_number.ev_v' ~ i ~ '_max_charge_power_kw') | float(11.0) %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.val | round(1) }}
+        attributes:
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+
+      - name: "EV Active Target Battery Percentage"
+        unique_id: ev_active_target_battery_percentage
+        unit_of_measurement: "%"
+        icon: mdi:battery-charging-100
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(ent='') %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.ent = states('input_text.ev_v' ~ i ~ '_target_limit_entity') | trim %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.ent not in ['', 'unknown', 'unavailable', 'none'] and states(ns.ent) not in ['unknown', 'unavailable', 'none', ''] %}
+            {{ states(ns.ent) | int(80) }}
+          {% else %}
+            80
+          {% endif %}
+        attributes:
+          active_vehicle: "{{ states('input_select.ev_active_vehicle') }}"
+
+      - name: "EV Active Target Limit Entity"
+        unique_id: ev_active_target_limit_entity
+        icon: mdi:code-tags
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(ent='') %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.ent = states('input_text.ev_v' ~ i ~ '_target_limit_entity') | trim %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.ent }}
+
+      - name: "EV Active Charge Switch Entity"
+        unique_id: ev_active_charge_switch_entity
+        icon: mdi:power
+        state: >-
+          {% set active = states('input_select.ev_active_vehicle') | trim %}
+          {% set ns = namespace(ent='') %}
+          {% for i in range(1, 6) %}
+            {% if is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') and states('input_text.ev_v' ~ i ~ '_name') | trim == active %}
+              {% set ns.ent = states('input_text.ev_v' ~ i ~ '_charge_switch_entity') | trim %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.ent }}
+
+automation:
+  - id: ev_vehicle_update_options
+    alias: "EV Vehicle Update Options List"
+    description: "Update input_select.ev_active_vehicle options based on enabled vehicle slots"
+    mode: restart
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id:
+          - input_boolean.ev_v1_enabled
+          - input_boolean.ev_v2_enabled
+          - input_boolean.ev_v3_enabled
+          - input_boolean.ev_v4_enabled
+          - input_boolean.ev_v5_enabled
+          - input_text.ev_v1_name
+          - input_text.ev_v2_name
+          - input_text.ev_v3_name
+          - input_text.ev_v4_name
+          - input_text.ev_v5_name
+    actions:
+      - variables:
+          opts: >-
+            {% set ns = namespace(items=[]) %}
+            {% for i in range(1, 6) %}
+              {% set en = is_state('input_boolean.ev_v' ~ i ~ '_enabled', 'on') %}
+              {% set nm = states('input_text.ev_v' ~ i ~ '_name') | trim %}
+              {% if en and nm != '' %}
+                {% set ns.items = ns.items + [nm] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.items if ns.items | length > 0 else ['Geen voertuig'] }}
+      - action: input_select.set_options
+        target:
+          entity_id: input_select.ev_active_vehicle
+        data:
+          options: "{{ opts }}"
+      - if:
+          - condition: template
+            value_template: "{{ states('input_select.ev_active_vehicle') not in opts }}"
+        then:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.ev_active_vehicle
+            data:
+              option: "{{ opts[0] }}"
