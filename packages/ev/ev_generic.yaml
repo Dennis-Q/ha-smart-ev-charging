@@ -143,6 +143,9 @@ script:
       - action: input_number.set_value
         target: { entity_id: input_number.ev_window_charging_end_hour }
         data: { value: 6 }
+      - action: input_number.set_value
+        target: { entity_id: input_number.ev_window_charging_max_price }
+        data: { value: 0.32 }
       # Solar phase-switch thresholds — match the previously hard-coded values
       - action: input_number.set_value
         target: { entity_id: input_number.ev_solar_switch_to_3phase_threshold_w }
@@ -165,11 +168,13 @@ script:
             - input_boolean.ev_battery_assist_charging
             - input_boolean.ev_window_charging
             - input_boolean.ev_dynamic_tariff_optimization
+            - input_boolean.ev_window_max_price_enabled
       - action: input_boolean.turn_on
         target:
           entity_id: input_boolean.ev_notifications_enabled
       # Note: input_text helpers (ev_notify_entity_id, ev_solar_power_entity_1/2,
-      # ev_home_battery_power_entity, ev_home_battery_assist_active_entity) are
+      # ev_home_battery_power_entity, ev_home_battery_assist_active_entity,
+      # ev_price_entity) are
       # deliberately NOT reset — they are install-specific wiring.
 
   # Narrow reset for just the three solar phase-switch thresholds.
@@ -271,7 +276,8 @@ template:
         unit_of_measurement: "%"
         state: >
           {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
+          {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
           {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
@@ -300,7 +306,8 @@ template:
         unique_id: ev_charging_mode
         state: >
           {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') %}
+          {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
           {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}

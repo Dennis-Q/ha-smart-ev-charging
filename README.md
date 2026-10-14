@@ -13,7 +13,7 @@ Probably incomplete but it's a start:
 - Solar integration (for solar charging, entities that show current power-use)
 - P1-meter (preferably with quick updates)
 - Peblar EV charger with **Modbus TCP enabled** (see below)
-- Entso-e integration (and in Dashboard also Frank Energie)
+- Frank Energie integration (default price source) or Entso-e — see `input_text.ev_price_entity`
 
 ### Enabling Modbus on the Peblar charger
 

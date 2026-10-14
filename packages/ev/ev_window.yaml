@@ -27,6 +27,33 @@ input_number:
     step: 10
     icon: mdi:clock-star-four-points
 
+  # Upper price limit for window and cheapest-hours charging, compared against
+  # the current slot of sensor.ev_energy_prices_data — so it is all-in or
+  # market price depending on input_text.ev_price_entity. Only applied when
+  # input_boolean.ev_window_max_price_enabled is on.
+  ev_window_charging_max_price:
+    name: "EV Window Charging Max Price"
+    unit_of_measurement: "EUR/kWh"
+    min: -0.50
+    max: 2.00
+    step: 0.01
+    mode: box
+    icon: mdi:currency-eur
+
+input_text:
+  # ev_price_entity
+  #   Sensor whose 'prices' attribute holds the dynamic tariff, one entry per
+  #   slot. Both shapes are understood: Frank Energie ({from, till, price}) and
+  #   ENTSO-E ({time, price}). Hourly and 15-minute slots both work. Pick the
+  #   all-in sensor to make the max price an all-in price; the cheapest-hours
+  #   ranking is the same for all-in and market price.
+  #   Empty ⇒ sensor.frank_energie_prices_current_electricity_price_all_in.
+  #   Example (ENTSO-E): sensor.average_electricity_price
+  ev_price_entity:
+    name: "EV Price entity"
+    icon: mdi:cash-clock
+    max: 255
+
 input_boolean:
   ev_window_charging:
     name: "EV Window Charging"
@@ -36,9 +63,151 @@ input_boolean:
     name: "EV Dynamic Tariff Optimization (in window)"
     icon: mdi:chart-line
 
+  ev_window_max_price_enabled:
+    name: "EV Window Max Price Limit"
+    icon: mdi:cash-lock
+
 ## Templates & sensors
 
 template:
+  # Normalised dynamic-tariff data — the single place that reads the provider
+  # sensor. Everything else reads 'slots' from here, never the provider, so a
+  # new provider only needs handling in this block. Same shape as HBA's
+  # sensor.hba_energy_prices_data, so the parsing can later move to a shared
+  # adapter without touching the consumers.
+  #   slots:          [{ts, price}] — slot start (unix s), EUR/kWh; sorted,
+  #                   one entry per timestamp
+  #   slots_per_hour: 1 for hourly data, 4 for 15-minute data
+  # Jinja notes: entry['from'], not entry.from ('from' is a Jinja keyword).
+  - triggers:
+      # Every 15 minutes, so new data (tomorrow's prices arrive early afternoon)
+      # shows up within one slot without having to watch a dynamic entity.
+      - trigger: time_pattern
+        minutes: "/15"
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+      - trigger: state
+        entity_id: input_text.ev_price_entity
+    actions:
+      - variables:
+          source: >-
+            {%- set e = states('input_text.ev_price_entity') | trim -%}
+            {{ e if e not in ['', 'unknown', 'unavailable'] else 'sensor.frank_energie_prices_current_electricity_price_all_in' }}
+          slots: >-
+            {%- set raw = state_attr(source, 'prices') -%}
+            {#- De-duplicate by slot timestamp, keeping the first occurrence.
+                The Frank Energie integration appends a second copy of today's
+                prices when its tomorrow-fetch fails (seen in HBA, 2026-07):
+                48 entries covering 24 distinct hours. Unfiltered, that makes
+                the same hour count twice when picking the cheapest hours. -#}
+            {%- set ns = namespace(slots=[], seen=[]) -%}
+            {%- for entry in (raw if raw is sequence and raw is not string else []) -%}
+              {%- if entry is mapping and 'price' in entry and ('from' in entry or 'time' in entry) -%}
+                {%- set ts = as_timestamp(entry['from'] if 'from' in entry else entry['time'], 0) | int -%}
+                {%- if ts > 0 and ts not in ns.seen -%}
+                  {%- set ns.seen = ns.seen + [ts] -%}
+                  {%- set ns.slots = ns.slots + [{'ts': ts, 'price': entry['price'] | float(0) | round(5)}] -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {{ ns.slots | sort(attribute='ts') | to_json }}
+          slots_per_hour: >-
+            {%- set step = (slots[1].ts - slots[0].ts) if slots | length >= 2 else 3600 -%}
+            {{ ((3600 // step) | int) if step > 0 and step <= 3600 else 1 }}
+    sensor:
+      - name: "EV Energy Prices Data"
+        unique_id: ev_energy_prices_data
+        icon: mdi:cash-clock
+        state: "{{ slots | length }}"
+        attributes:
+          source: "{{ source }}"
+          slots_per_hour: "{{ slots_per_hour }}"
+          slots: "{{ slots }}"
+
+  - binary_sensor:
+      # Off when the max price limit is enabled and the current slot is above
+      # it, or when there is no current price (fail closed: an enabled limit
+      # never charges at an unknown price). Always on when the limit is off.
+      - name: "EV Window Price Allowed"
+        unique_id: ev_window_price_allowed
+        icon: mdi:cash-check
+        state: >-
+          {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+          {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+          {%- set now_ts = as_timestamp(now()) -%}
+          {%- set cur = slots | selectattr('ts', '<=', now_ts) | selectattr('ts', '>', now_ts - step) | list -%}
+          {%- set max_p = states('input_number.ev_window_charging_max_price') | float(none) -%}
+          {%- if not is_state('input_boolean.ev_window_max_price_enabled', 'on') -%}
+            true
+          {%- elif cur | length == 0 or max_p is none -%}
+            false
+          {%- else -%}
+            {{ cur[0].price <= max_p }}
+          {%- endif -%}
+        attributes:
+          current_price: >-
+            {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+            {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+            {%- set now_ts = as_timestamp(now()) -%}
+            {%- set cur = slots | selectattr('ts', '<=', now_ts) | selectattr('ts', '>', now_ts - step) | list -%}
+            {{ cur[0].price if cur | length > 0 else none }}
+          max_price: "{{ states('input_number.ev_window_charging_max_price') | float(none) }}"
+          max_price_enabled: "{{ is_state('input_boolean.ev_window_max_price_enabled', 'on') }}"
+
+  # 3) Cheapest slots within window. Trigger-based so the selection is computed
+  # once (in variables) and shared by state and attributes. The state is the
+  # number of selected slots — a JSON list as the state ran into HA's
+  # 255-character limit with longer charges or 15-minute slots.
+  - triggers:
+      - trigger: state
+        entity_id:
+          - sensor.ev_energy_prices_data
+          - sensor.ev_hours_needed_for_charging
+          - sensor.ev_charging_window_start_time
+          - sensor.ev_charging_window_end_time
+      # Slot boundaries: drops the slot that just ended from the candidates
+      - trigger: time_pattern
+        minutes: "/15"
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    actions:
+      - variables:
+          selected: >-
+            {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+            {%- set pph = state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1) -%}
+            {%- set step = 3600 // pph -%}
+            {%- set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) -%}
+            {%- set ws = as_timestamp(states('sensor.ev_charging_window_start_time'), 0) -%}
+            {%- set we = as_timestamp(states('sensor.ev_charging_window_end_time'), 0) -%}
+            {%- if slots | length == 0 or hours_needed <= 0 or ws == 0 or we == 0 -%}
+              []
+            {%- else -%}
+              {#- Current slot counts as a candidate (it may already be charging) -#}
+              {%- set now_ts = as_timestamp(now()) -%}
+              {%- set candidates = slots
+                   | selectattr('ts', '>=', ws) | selectattr('ts', '<', we)
+                   | selectattr('ts', '>', now_ts - step) | list -%}
+              {%- set n = (hours_needed * pph) | round(0, 'ceil') | int -%}
+              {%- set ns = namespace(out=[]) -%}
+              {%- for s in (candidates | sort(attribute='price'))[:n] | sort(attribute='ts') -%}
+                {%- set ns.out = ns.out + [{'ts': s.ts, 'time': s.ts | timestamp_custom('%Y-%m-%d %H:%M:%S'), 'price': s.price}] -%}
+              {%- endfor -%}
+              {{ ns.out | to_json }}
+            {%- endif -%}
+    sensor:
+      - name: EV Cheapest Hours In Window
+        unique_id: ev_cheapest_hours_in_window
+        icon: mdi:cash-clock
+        state: "{{ selected | length }}"
+        attributes:
+          count: "{{ selected | length }}"
+          slots: "{{ selected }}"
+          price_source: "{{ state_attr('sensor.ev_energy_prices_data', 'source') }}"
+
   - sensor:
       # 1) Base window start/end (purely from input_numbers + time)
       - name: EV Charging Window Start Time
@@ -148,52 +317,6 @@ template:
           target_battery_percent: "{{ states('input_number.ev_charging_limit_window') | float(0) | round(1) }}"
           battery_capacity_kwh: "{{ states('input_number.ev_battery_capacity_kwh') | float(0) | round(1) }}"
           
-      # 3) Cheapest hours within window (JSON list)
-      - name: EV Cheapest Hours In Window
-        unique_id: ev_cheapest_hours_in_window
-        state: >
-          {# State is JSON string of selected hours #}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
-          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
-          {% set window_start = states('sensor.ev_charging_window_start_time') %}
-          {% set window_end = states('sensor.ev_charging_window_end_time') %}
-          {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
-
-          {% if prices_raw is none or hours_needed == 0 or
-                window_start in ['unknown','unavailable','None'] or
-                window_end in ['unknown','unavailable','None'] %}
-            []
-          {% else %}
-            {% set window_prices = prices_raw
-                 | selectattr('time', '>=', window_start)
-                 | selectattr('time', '<', window_end)
-                 | list %}
-            {% set future_prices = window_prices
-                 | selectattr('time', '>=', cutoff)
-                 | list %}
-
-            {% if future_prices | length == 0 %}
-              []
-            {% else %}
-              {% set sorted_prices = future_prices | sort(attribute='price') %}
-              {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
-              {% set selected = sorted_prices[:hours_int] | sort(attribute='time') %}
-              [{% for item in selected -%}
-                {"time": "{{ item.time }}", "price": {{ item.price | round(4) }}}
-                {%- if not loop.last %},{% endif -%}
-              {%- endfor %}]
-            {% endif %}
-          {% endif %}
-        attributes:
-          count: >
-            {% set s = states('sensor.ev_cheapest_hours_in_window') %}
-            {% if s in ['unknown','unavailable','None',''] %}
-              0
-            {% else %}
-              {% set list = s | from_json %}
-              {{ list | length }}
-            {% endif %}
-
       # 4) Latest start time (window_end - hours_needed)
       - name: EV Window Latest Start Time
         unique_id: ev_window_latest_start_time
@@ -208,20 +331,15 @@ template:
             {{ latest_start_dt.strftime('%Y-%m-%d %H:%M:%S') }}
           {% endif %}
 
-      # 5) Is current time in *any* of the cheapest hours?
+      # 5) Is current time in *any* of the cheapest slots?
       - name: EV Is In Cheapest Window
         unique_id: ev_is_in_cheapest_window
         state: >
-          {% set s = states('sensor.ev_cheapest_hours_in_window') %}
-          {% if s in ['unknown','unavailable','None',''] %}
-            false
-          {% else %}
-            {% set cheapest = s | from_json %}
-            {% set now_dt = now() %}
-            {% set current_hour_prefix = now_dt.strftime('%Y-%m-%d %H') %}
-            {% set match = cheapest | selectattr('time', 'match', '^' + current_hour_prefix) | list %}
-            {{ (match | length > 0) | lower }}
-          {% endif %}
+          {% set selected = state_attr('sensor.ev_cheapest_hours_in_window', 'slots') or [] %}
+          {% set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) %}
+          {% set now_ts = as_timestamp(now()) %}
+          {% set match = selected | selectattr('ts', '<=', now_ts) | selectattr('ts', '>', now_ts - step) | list %}
+          {{ (match | length > 0) | lower }}
 
       # 6) Sufficient time left in window (based on latest_start)
       - name: EV Sufficient Hours To Charge In Window
@@ -236,56 +354,54 @@ template:
           {% endif %}
 
       # 7) Sufficient known hours in window (based purely on available price slots)
-      # average_electricity_price sensor is of the entso-e platform (default names)
-      # not sure how useful this currently is, does not take into account hours that already passed.
+      # Counts every known slot in the window, including ones already passed.
       - name: EV Sufficient Known Hours In Window
         unique_id: ev_sufficient_known_hours_in_window
         state: >
-          {% set window_start = states('sensor.ev_charging_window_start_time') %}
-          {% set window_end = states('sensor.ev_charging_window_end_time') %}
+          {% set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] %}
+          {% set pph = state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1) %}
           {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
-          {% if prices_raw is none or hours_needed == 0 or
-                window_start in ['unknown','unavailable','None'] or
-                window_end in ['unknown','unavailable','None'] %}
+          {% set ws = as_timestamp(states('sensor.ev_charging_window_start_time'), 0) %}
+          {% set we = as_timestamp(states('sensor.ev_charging_window_end_time'), 0) %}
+          {% if slots | length == 0 or hours_needed == 0 or ws == 0 or we == 0 %}
             false
           {% else %}
-            {% set window_prices = prices_raw
-                 | selectattr('time', '>=', window_start)
-                 | selectattr('time', '<', window_end)
-                 | list %}
-            {% set hours_available = window_prices | length %}
-            {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
-            {{ (hours_available >= hours_int) | lower }}
+            {% set known = slots | selectattr('ts', '>=', ws) | selectattr('ts', '<', we) | list | length %}
+            {{ (known >= ((hours_needed * pph) | round(0, 'ceil') | int)) | lower }}
           {% endif %}
 
       # Might be useful for debugging. Disable when all works fine.
+      # The state stays well under HA's 255-character limit; the multi-line
+      # summary that used to be the state is the 'details' attribute.
       - name: EV Charging Debug Info
         unique_id: ev_charging_debug_info
-        state: >
-          {# Debug information: future hours available, hours needed, and current timestamp #}
-          {% set prices_raw = state_attr('sensor.average_electricity_price', 'prices') %}
-          {% set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) %}
-          {% set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) %}
-          {% set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) %}
-          {% set hours_int = (hours_needed | int) + (1 if (hours_needed % 1) > 0 else 0) %}
-          {% set window_start = states('sensor.ev_charging_window_start_time') %}
-          {% set window_end = states('sensor.ev_charging_window_end_time') %}
-
-          {% if prices_raw is none %}
-            {% set future_count = 0 %}
-            {% set total_count = 0 %}
-          {% else %}
-            {% set cutoff = now().strftime('%Y-%m-%d %H:00:00') %}
-            {% set future_prices = prices_raw | rejectattr('time', '<', cutoff) | list %}
-            {% set future_count = future_prices | length %}
-            {% set total_count = prices_raw | length %}
-          {% endif %}
-
-          Future hours available: {{ future_count }}/{{ total_count }}
-          Hours needed: {{ hours_needed }} (selecting {{ hours_int }} hours)
-          Now: {{ now().isoformat() }}
-          Cutoff: {{ now().strftime('%Y-%m-%d %H:00:00') }}
-          Night window: {{ start_hour }}:00 - {{ end_hour }}:00 {% if end_hour <= start_hour %}(crosses midnight){% endif %}
-          Window start: {{ window_start }}
-          Window end: {{ window_end }}
+        state: >-
+          {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+          {%- set pph = state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1) -%}
+          {%- set now_ts = as_timestamp(now()) -%}
+          {%- set future = slots | selectattr('ts', '>', now_ts - 3600 // pph) | list | length -%}
+          {%- set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) -%}
+          {%- if slots | length > 0 -%}
+            {{ future }}/{{ slots | length }} slots ({{ pph }}/h) avail, need {{ hours_needed }}h
+          {%- else -%}
+            need {{ hours_needed }}h (no price data)
+          {%- endif -%}
+        attributes:
+          details: |-
+            {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+            {%- set pph = state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1) -%}
+            {%- set now_ts = as_timestamp(now()) -%}
+            {%- set future = slots | selectattr('ts', '>', now_ts - 3600 // pph) | list | length -%}
+            {%- set start_hour = states('input_number.ev_window_charging_start_hour') | int(0) -%}
+            {%- set end_hour = states('input_number.ev_window_charging_end_hour') | int(0) -%}
+            {%- set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) -%}
+            Price source: {{ state_attr('sensor.ev_energy_prices_data', 'source') }}
+            Future slots available: {{ future }}/{{ slots | length }} ({{ pph }} per hour)
+            Hours needed: {{ hours_needed }} (selecting {{ (hours_needed * pph) | round(0, 'ceil') | int }} slots)
+            Now: {{ now().isoformat() }}
+            Night window: {{ '%02d' | format(start_hour) }}:00 - {{ '%02d' | format(end_hour) }}:00 {% if end_hour <= start_hour %}(crosses midnight){% endif %}
+            Window start: {{ states('sensor.ev_charging_window_start_time') }}
+            Window end: {{ states('sensor.ev_charging_window_end_time') }}
+            Max price: {{ states('input_number.ev_window_charging_max_price') }} EUR/kWh ({{ 'enabled' if is_state('input_boolean.ev_window_max_price_enabled', 'on') else 'disabled' }})
+            Current price: {{ state_attr('binary_sensor.ev_window_price_allowed', 'current_price') }} EUR/kWh
+            Price allowed: {{ states('binary_sensor.ev_window_price_allowed') }}

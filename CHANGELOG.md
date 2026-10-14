@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.17] – 2026-10-14
+
+### Added
+- **Configurable price source — `input_text.ev_price_entity`.** Any sensor with a `prices`
+  attribute: Frank Energie (`{from, till, price}`) or ENTSO-E (`{time, price}`), hourly or
+  15-minute slots. Empty (the default, so existing installs need no action) means
+  `sensor.frank_energie_prices_current_electricity_price_all_in`. **Behaviour change:** the
+  cheapest-hours selection used to read ENTSO-E `sensor.average_electricity_price`; it now uses
+  Frank Energie unless you set the ENTSO-E sensor here. Ranking is the same for all-in and
+  market prices (the difference is close to a fixed markup), so the choice mostly affects the
+  max price below and what the dashboard shows.
+- **`sensor.ev_energy_prices_data`** — the only place that reads the provider sensor. Its
+  `slots` attribute (`[{ts, price}]`, sorted, one entry per timestamp) plus `slots_per_hour`
+  are what every window sensor now reads. Same shape as the home battery project's
+  `sensor.hba_energy_prices_data`, so the parsing can later become a shared adapter without
+  touching consumers. Duplicate timestamps are dropped: Frank Energie appends a second copy of
+  today when its tomorrow-fetch fails, which would make the same hour count twice.
+- **Window max price** — `input_boolean.ev_window_max_price_enabled` +
+  `input_number.ev_window_charging_max_price` (EUR/kWh; `apply_defaults`: 0.32, limit off — opt in, so an expensive night still charges by default) and
+  `binary_sensor.ev_window_price_allowed`. While enabled, `window` and `cheapest` only charge
+  when the current slot is at or below the limit; it fails closed (no current price ⇒ no
+  window charging). Solar, battery assist and force are not affected. The limit is in the
+  terms of the configured price sensor — pick the all-in sensor for an all-in limit.
+
+### Changed
+- **Cheapest-hours selection works per slot** instead of per hour, so 15-minute prices
+  select the right amount of time (⌈hours needed × slots per hour⌉) and
+  `ev_is_in_cheapest_window` matches the current slot instead of the current hour prefix.
+- **`sensor.ev_cheapest_hours_in_window` state is now the number of selected slots;** the list
+  moved to the `slots` attribute (`[{ts, time, price}]`). As a JSON state it hit HA's
+  255-character limit on longer charges and went `unknown`.
+- **`sensor.ev_charging_debug_info`** — short one-line state; the multi-line summary moved to
+  the `details` attribute (same 255-character limit; it adds price source and max-price
+  lines).
+
+### Thanks
+- Mik3yZ — the max price limit, the Frank Energie switch and the debug-info fix come from their
+  `window-charging-max-price` branch, reworked onto the shared price data sensor.
+
 ## [0.2.16] – 2026-07-27
 
 ### Fixed

@@ -174,6 +174,10 @@ views:
           - entity: input_number.ev_window_charging_end_hour
             name: Window End (Hour)
           - entity: input_boolean.ev_dynamic_tariff_optimization
+          - entity: input_boolean.ev_window_max_price_enabled
+            name: Window Max Price Limit
+          - entity: input_number.ev_window_charging_max_price
+            name: Window Max Price (€/kWh)
           - entity: input_boolean.ev_charge_prefer_tariff_over_solar
           - type: divider
           - entity: input_boolean.ev_force_charge_permanent
@@ -280,6 +284,8 @@ views:
           - entity: sensor.ev_charging_window_end_time
             name: EV Charging End Time
           - entity: sensor.ev_charging_window_active
+          - entity: binary_sensor.ev_window_price_allowed
+            name: Window Price Allowed (below max)
           - entity: sensor.ev_hours_needed_for_charging
           - entity: sensor.ev_cheapest_hours_in_window
           - entity: sensor.ev_window_latest_start_time
@@ -371,6 +377,31 @@ views:
               Three-phase minimum is ~4140 W (6 A × 690 V); single-phase
               minimum is ~1380 W (6 A × 230 V). Below the **stop charging**
               threshold the controller pauses entirely.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Price data
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_price_entity
+                name: Price entity
+              - entity: sensor.ev_energy_prices_data
+                name: Price slots loaded
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: source
+                name: Source in use
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: slots_per_hour
+                name: Slots per hour
+          - type: markdown
+            content: >-
+              Sensor with a `prices` attribute (Frank Energie or ENTSO-E,
+              hourly or 15-minute). Leave empty for
+              `sensor.frank_energie_prices_current_electricity_price_all_in`.
+              Use the **all-in** sensor to make the window max price an
+              all-in price.
       - type: vertical-stack
         cards:
           - type: entities
