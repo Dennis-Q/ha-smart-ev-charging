@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.18] – unreleased
+
+### Added
+- **Charging plan on the dashboard** (Solar Charging view, next to Window Charging): an
+  apexcharts column chart of the next 36 h of prices from `sensor.ev_energy_prices_data` with
+  the selected slots in green, plus a summary — selected slots with price, hours needed, and
+  until when prices are known.
+- **`binary_sensor.ev_window_prices_known`** — on when the price data reaches the end of the
+  charging window; attributes `known_until`, `window_end`, `missing_hours`. Informational: it
+  does not change charging yet. Motivation (prod 2026-10-23): with the window at 08:00–07:00
+  the selection ran on today's prices only — ENTSO-E published tomorrow's at 22:24 — so it
+  charged at €0.12–0.16 midday and evening while the night was €0.02.
+
 ## [0.2.17] – 2026-10-14
 
 ### Added

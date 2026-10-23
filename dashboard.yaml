@@ -292,6 +292,61 @@ views:
           - entity: sensor.ev_is_in_cheapest_window
           - entity: sensor.ev_sufficient_hours_to_charge_in_window
           - entity: sensor.ev_sufficient_known_hours_in_window
+          - entity: binary_sensor.ev_window_prices_known
+            name: Prices known until window end
+      - type: vertical-stack
+        cards:
+          # Upcoming prices (configured price source, via ev_energy_prices_data)
+          # with the slots the window/cheapest logic selected highlighted.
+          - type: custom:apexcharts-card
+            graph_span: 36h
+            span:
+              start: hour
+            now:
+              show: true
+              label: Now
+            header:
+              show: true
+              title: Charging plan (€/kWh)
+              show_states: false
+            yaxis:
+              - decimals: 2
+            series:
+              - entity: sensor.ev_energy_prices_data
+                name: Price
+                type: column
+                color: "#9e9e9e"
+                opacity: 0.4
+                float_precision: 3
+                data_generator: |
+                  return (entity.attributes.slots || []).map((s) => [s.ts * 1000, s.price]);
+              - entity: sensor.ev_cheapest_hours_in_window
+                name: Selected
+                type: column
+                color: "#4caf50"
+                opacity: 1
+                float_precision: 3
+                data_generator: |
+                  return (entity.attributes.slots || []).map((s) => [s.ts * 1000, s.price]);
+          - type: markdown
+            content: >-
+              {% set d = state_attr('sensor.ev_energy_prices_data', 'slots') or [] %}
+              {% set sel = state_attr('sensor.ev_cheapest_hours_in_window', 'slots') or [] %}
+              {% set known = state_attr('binary_sensor.ev_window_prices_known', 'known_until') %}
+              {% set src = state_attr('sensor.ev_energy_prices_data', 'source') %}
+              **Selected:** {% if sel | length == 0 %}none{% else %}{% for s in sel %}{{ s.ts | timestamp_custom('%a %H:%M') }} (€{{ '%.3f' | format(s.price) }}){{ ', ' if not loop.last }}{% endfor %}{% endif %}
+              — {{ states('sensor.ev_hours_needed_for_charging') }} h needed
+
+              **Prices known until:** {{ as_timestamp(known) | timestamp_custom('%a %H:%M') if known else 'no price data' }}
+              {%- if is_state('binary_sensor.ev_window_prices_known', 'off') and known %}
+              — ⚠️ {{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }} h of the window (until {{ as_timestamp(states('sensor.ev_charging_window_end_time')) | timestamp_custom('%a %H:%M') }}) not priced yet; selection only covers the known part
+              {%- endif %}
+              {%- if state_attr('sensor.ev_energy_prices_data', 'stale') %}
+
+              ⚠️ **{{ src }} has no prices** — using the last known slots
+              {%- endif %}
+
+              <small>Source: {{ src }} · {{ d | length }} slots · {{ state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') }}/h</small>
       - type: entities
         title: Debug Information
         entities:

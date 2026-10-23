@@ -142,6 +142,34 @@ template:
             {{ fresh if fresh | length > 0 else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list }}
 
   - binary_sensor:
+      # On when the price data reaches the end of the charging window, so the
+      # cheapest-slot selection compares the whole window. Off while the next
+      # day's prices are not published yet (normally early afternoon; ENTSO-E
+      # only at 22:24 on 2026-10-23) — the selection then only sees part of
+      # the window. Informational for now: it does not change charging.
+      - name: "EV Window Prices Known"
+        unique_id: ev_window_prices_known
+        icon: mdi:calendar-clock
+        state: >-
+          {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+          {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+          {%- set we = as_timestamp(states('sensor.ev_charging_window_end_time'), 0) -%}
+          {{ slots | length > 0 and we > 0 and (slots | last).ts + step >= we }}
+        attributes:
+          known_until: >-
+            {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+            {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+            {{ ((slots | last).ts + step) | timestamp_custom('%Y-%m-%d %H:%M:%S') if slots | length > 0 else none }}
+          window_end: "{{ states('sensor.ev_charging_window_end_time') }}"
+          # Hours of the window that have no price yet (0 when known)
+          missing_hours: >-
+            {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+            {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+            {%- set we = as_timestamp(states('sensor.ev_charging_window_end_time'), 0) -%}
+            {%- set ku = ((slots | last).ts + step) if slots | length > 0 else as_timestamp(now()) -%}
+            {{ ([we - ku, 0] | max / 3600) | round(1) if we > 0 else none }}
+
+  - binary_sensor:
       # Off when the max price limit is enabled and the current slot is above
       # it, or when there is no current price (fail closed: an enabled limit
       # never charges at an unknown price). Always on when the limit is off.
