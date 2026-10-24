@@ -34,6 +34,31 @@ See `MODBUS-README.md` for the full installation procedure, including the
 required order of steps (remove the official REST integration first, then
 install and configure the Modbus package).
 
+## Dynamic prices and window charging
+
+All price logic reads one sensor, `sensor.ev_energy_prices_data`. It takes the `prices`
+attribute of the sensor named in `input_text.ev_price_entity` (Advanced settings → Price data)
+and turns it into a sorted list of slots (`slots: [{ts, price}]`, `slots_per_hour`).
+
+- **Source:** Frank Energie (`{from, till, price}`) or ENTSO-E (`{time, price}`), hourly or
+  15-minute. Empty = `sensor.frank_energie_prices_current_electricity_price_all_in`. Use the
+  all-in sensor if you want the max price to be an all-in price. The cheapest-hours ranking is
+  the same for all-in and market prices.
+- **Outages:** when the source has no prices, the slots that have not ended yet are kept
+  (`stale: true`). Slots are fixed timestamps and are never reused for another day. After an
+  hour you get a notification.
+- **Cheapest hours** (window charging + `ev_dynamic_tariff_optimization`): picks the cheapest
+  ⌈hours needed × slots per hour⌉ slots between now and the window end. The plan is shown as a
+  chart and summary under **Window Charging** on the main view.
+- **Max price** (`ev_window_max_price_enabled`, `ev_window_charging_max_price`, default 0.32,
+  **off by default**): while on, window and cheapest charging only run in slots at or below the
+  limit. Without tariff optimisation that means "charge whenever it is cheap enough".
+- **Prices not known yet:** next-day prices are published around 13:15 (Frank Energie). Until
+  then, a window that ends the next morning is only partly priced, and the selection only
+  compares the known part. `binary_sensor.ev_window_prices_known` shows this. If prices are
+  still missing after 14:00, `binary_sensor.ev_window_prices_late` turns on and you get a
+  notification.
+
 ## Installation
 
 Run this from your Home Assistant `/config` directory (e.g. via the SSH add-on):
