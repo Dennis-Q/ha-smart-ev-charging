@@ -153,6 +153,7 @@ OLD_EV=()
 for _candidate in \
     "${CONFIG_DIR}/packages/ev_generic.yaml" \
     "${CONFIG_DIR}/packages/ev_solar.yaml" \
+    "${CONFIG_DIR}/packages/ev_vehicles.yaml" \
     "${CONFIG_DIR}/packages/ev_window.yaml" \
     "${CONFIG_DIR}/packages/ev_peblar_modbus.yaml"; do
     [ -f "$_candidate" ] && OLD_EV+=("$_candidate")
@@ -196,6 +197,7 @@ CORE_FILES=(
     packages/ev/ev_generic.yaml
     packages/ev/ev_notifications.yaml
     packages/ev/ev_solar.yaml
+    packages/ev/ev_vehicles.yaml
     packages/ev/ev_window.yaml
 )
 

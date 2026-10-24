@@ -3,22 +3,6 @@
 ## Input helpers
 
 input_number:
-  ev_battery_capacity_kwh:
-    name: "EV Battery Capacity"
-    unit_of_measurement: "kWh"
-    min: 50
-    max: 100
-    step: 1
-    icon: mdi:battery-high
-
-  ev_charger_max_power_kw:
-    name: "EV Charger Maximum Power"
-    unit_of_measurement: "kW"
-    min: 6
-    max: 11
-    step: 1
-    icon: mdi:lightning-bolt-circle
-
   ev_charging_efficiency_percent:
     name: "EV Charging Efficiency"
     unit_of_measurement: "%"
@@ -115,13 +99,10 @@ script:
       Sets all user-configurable EV helpers to sensible starting values.
       Run once after a fresh install, or any time you want a known-good baseline.
     sequence:
+      # Default vehicle slots (Skoda Elroq & Dacia Spring)
+      - action: script.turn_on
+        target: { entity_id: script.ev_apply_vehicle_defaults }
       # Numbers
-      - action: input_number.set_value
-        target: { entity_id: input_number.ev_battery_capacity_kwh }
-        data: { value: 60 }
-      - action: input_number.set_value
-        target: { entity_id: input_number.ev_charger_max_power_kw }
-        data: { value: 11 }
       - action: input_number.set_value
         target: { entity_id: input_number.ev_charging_efficiency_percent }
         data: { value: 90 }
@@ -530,14 +511,22 @@ automation:
         entity_id: input_boolean.ev_manual_override
         state: "off"
     actions:
-      - action: switch.turn_off
-        target:
-          entity_id: switch.peblar_ev_charger_force_single_phase
       - action: number.set_value
         target:
-          entity_id: number.peblar_ev_charger_charge_current_limit_ma
+          entity_id: number.peblar_ev_charger_charge_limit
         data:
-          value: 16000
+          value: 16
+      - if:
+          - condition: template
+            value_template: "{{ states('sensor.ev_active_max_charge_power') | float(11.0) <= 3.7 }}"
+        then:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.peblar_ev_charger_force_single_phase
+        else:
+          - action: switch.turn_off
+            target:
+              entity_id: switch.peblar_ev_charger_force_single_phase
       - action: switch.turn_on
         target:
           entity_id: switch.peblar_ev_charger_charge
@@ -734,18 +723,35 @@ automation:
                   entity_id: number.peblar_ev_charger_charge_limit
                 data:
                   value: 16
-              - action: switch.turn_off # switch to 3-phase mode
-                target:
-                  entity_id: switch.peblar_ev_charger_force_single_phase
+              - if:
+                  - condition: template
+                    value_template: "{{ states('sensor.ev_active_max_charge_power') | float(11.0) <= 3.7 }}"
+                then:
+                  - action: switch.turn_on # keep 1-phase car in single-phase mode
+                    target:
+                      entity_id: switch.peblar_ev_charger_force_single_phase
+                else:
+                  - action: switch.turn_off # switch to 3-phase mode
+                    target:
+                      entity_id: switch.peblar_ev_charger_force_single_phase
               - action: switch.turn_on # allow charging
                 target:
                   entity_id: switch.peblar_ev_charger_charge
           - conditions:
-              - condition: trigger
-                id: mode_none
+              - condition: or
+                conditions:
+                  - condition: trigger
+                    id: mode_none
+                  - condition: and
+                    conditions:
+                      - condition: trigger
+                        id: connected
+                      - condition: state
+                        entity_id: sensor.ev_charging_mode
+                        state: "none"
             # No connection gate: stop regardless of plug state so the charge
-            # switch is never left armed across a disconnect (re-writing 0 is
-            # toggle-budget-free; harmless when no car is present).
+            # switch is never left armed across a disconnect, and also explicitly
+            # disarm on plug-in if the mode is already 'none'.
             sequence:
               - action: switch.turn_off # Stop charging if no mode is selected
                 target:

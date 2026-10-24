@@ -276,10 +276,10 @@ views:
             name: Peblar Charger On/Off
           - type: conditional
             conditions:
-              - entity: input_select.ev_active_vehicle
-                state: "Skoda Elroq"
+              - entity: sensor.ev_active_charge_switch_entity
+                state_not: ""
             row:
-              entity: switch.skoda_elroq_charging
+              entity: switch.ev_active_vehicle_charging
               name: Car Charging On/Off
       - type: entities
         title: Window Charging
@@ -341,174 +341,199 @@ views:
           - Klik op **Verwijderen** bij een voertuig om het uit te schakelen; het verdwijnt dan direct uit de keuzelijst.
 
       # ── Voertuig Slot 1 ─────────────────────────────────────────────────────
-      - type: entities
-        title: Voertuig Slot 1
-        show_header_toggle: false
+      - type: vertical-stack
         visibility:
           - condition: state
             entity: input_boolean.ev_v1_enabled
             state: "on"
-        entities:
-          - entity: input_text.ev_v1_name
-            name: Naam voertuig
-          - entity: input_number.ev_v1_battery_capacity_kwh
-            name: Accucapaciteit
-          - entity: input_number.ev_v1_max_charge_power_kw
-            name: Max laadsnelheid
-          - entity: input_text.ev_v1_battery_sensor
-            name: Batterij sensor entiteit
-          - entity: input_text.ev_v1_target_limit_entity
-            name: Doellimiet entiteit
-          - entity: input_text.ev_v1_charge_switch_entity
-            name: Laadschakelaar entiteit
-          - type: divider
-          - type: button
-            name: Verwijder Voertuig Slot 1
-            icon: mdi:trash-can-outline
-            action_name: Verwijderen
-            tap_action:
-              action: perform-action
-              perform_action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.ev_v1_enabled
-              confirmation:
-                text: "Weet je zeker dat je Voertuig Slot 1 wilt uitschakelen/verwijderen?"
+        cards:
+          - type: markdown
+            content: >-
+              ### 🚗 Slot 1: {{ states('input_text.ev_v1_name') or 'Voertuig 1' }}
+              **{{ states('input_number.ev_v1_battery_capacity_kwh') }} kWh** · **{{ states('input_number.ev_v1_max_charge_power_kw') }} kW**{% if is_state('input_select.ev_active_vehicle', states('input_text.ev_v1_name')) %} · ✅ *Actief*{% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_v1_name
+                name: Naam voertuig
+              - entity: input_number.ev_v1_battery_capacity_kwh
+                name: Accucapaciteit
+              - entity: input_number.ev_v1_max_charge_power_kw
+                name: Max laadsnelheid
+              - entity: input_text.ev_v1_battery_sensor
+                name: Batterij sensor entiteit
+              - entity: input_text.ev_v1_target_limit_entity
+                name: Doellimiet entiteit
+              - entity: input_text.ev_v1_charge_switch_entity
+                name: Laadschakelaar entiteit
+              - type: divider
+              - type: button
+                name: Verwijder Voertuig Slot 1
+                icon: mdi:trash-can-outline
+                action_name: Verwijderen
+                tap_action:
+                  action: perform-action
+                  perform_action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.ev_v1_enabled
+                  confirmation:
+                    text: "Weet je zeker dat je Voertuig Slot 1 wilt uitschakelen/verwijderen?"
 
       # ── Voertuig Slot 2 ─────────────────────────────────────────────────────
-      - type: entities
-        title: Voertuig Slot 2
-        show_header_toggle: false
+      - type: vertical-stack
         visibility:
           - condition: state
             entity: input_boolean.ev_v2_enabled
             state: "on"
-        entities:
-          - entity: input_text.ev_v2_name
-            name: Naam voertuig
-          - entity: input_number.ev_v2_battery_capacity_kwh
-            name: Accucapaciteit
-          - entity: input_number.ev_v2_max_charge_power_kw
-            name: Max laadsnelheid
-          - entity: input_text.ev_v2_battery_sensor
-            name: Batterij sensor entiteit
-          - entity: input_text.ev_v2_target_limit_entity
-            name: Doellimiet entiteit
-          - entity: input_text.ev_v2_charge_switch_entity
-            name: Laadschakelaar entiteit
-          - type: divider
-          - type: button
-            name: Verwijder Voertuig Slot 2
-            icon: mdi:trash-can-outline
-            action_name: Verwijderen
-            tap_action:
-              action: perform-action
-              perform_action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.ev_v2_enabled
-              confirmation:
-                text: "Weet je zeker dat je Voertuig Slot 2 wilt uitschakelen/verwijderen?"
+        cards:
+          - type: markdown
+            content: >-
+              ### 🚗 Slot 2: {{ states('input_text.ev_v2_name') or 'Voertuig 2' }}
+              **{{ states('input_number.ev_v2_battery_capacity_kwh') }} kWh** · **{{ states('input_number.ev_v2_max_charge_power_kw') }} kW**{% if is_state('input_select.ev_active_vehicle', states('input_text.ev_v2_name')) %} · ✅ *Actief*{% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_v2_name
+                name: Naam voertuig
+              - entity: input_number.ev_v2_battery_capacity_kwh
+                name: Accucapaciteit
+              - entity: input_number.ev_v2_max_charge_power_kw
+                name: Max laadsnelheid
+              - entity: input_text.ev_v2_battery_sensor
+                name: Batterij sensor entiteit
+              - entity: input_text.ev_v2_target_limit_entity
+                name: Doellimiet entiteit
+              - entity: input_text.ev_v2_charge_switch_entity
+                name: Laadschakelaar entiteit
+              - type: divider
+              - type: button
+                name: Verwijder Voertuig Slot 2
+                icon: mdi:trash-can-outline
+                action_name: Verwijderen
+                tap_action:
+                  action: perform-action
+                  perform_action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.ev_v2_enabled
+                  confirmation:
+                    text: "Weet je zeker dat je Voertuig Slot 2 wilt uitschakelen/verwijderen?"
 
       # ── Voertuig Slot 3 ─────────────────────────────────────────────────────
-      - type: entities
-        title: Voertuig Slot 3
-        show_header_toggle: false
+      - type: vertical-stack
         visibility:
           - condition: state
             entity: input_boolean.ev_v3_enabled
             state: "on"
-        entities:
-          - entity: input_text.ev_v3_name
-            name: Naam voertuig
-          - entity: input_number.ev_v3_battery_capacity_kwh
-            name: Accucapaciteit
-          - entity: input_number.ev_v3_max_charge_power_kw
-            name: Max laadsnelheid
-          - entity: input_text.ev_v3_battery_sensor
-            name: Batterij sensor entiteit
-          - entity: input_text.ev_v3_target_limit_entity
-            name: Doellimiet entiteit
-          - entity: input_text.ev_v3_charge_switch_entity
-            name: Laadschakelaar entiteit
-          - type: divider
-          - type: button
-            name: Verwijder Voertuig Slot 3
-            icon: mdi:trash-can-outline
-            action_name: Verwijderen
-            tap_action:
-              action: perform-action
-              perform_action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.ev_v3_enabled
-              confirmation:
-                text: "Weet je zeker dat je Voertuig Slot 3 wilt uitschakelen/verwijderen?"
+        cards:
+          - type: markdown
+            content: >-
+              ### 🚗 Slot 3: {{ states('input_text.ev_v3_name') or 'Voertuig 3' }}
+              **{{ states('input_number.ev_v3_battery_capacity_kwh') }} kWh** · **{{ states('input_number.ev_v3_max_charge_power_kw') }} kW**{% if is_state('input_select.ev_active_vehicle', states('input_text.ev_v3_name')) %} · ✅ *Actief*{% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_v3_name
+                name: Naam voertuig
+              - entity: input_number.ev_v3_battery_capacity_kwh
+                name: Accucapaciteit
+              - entity: input_number.ev_v3_max_charge_power_kw
+                name: Max laadsnelheid
+              - entity: input_text.ev_v3_battery_sensor
+                name: Batterij sensor entiteit
+              - entity: input_text.ev_v3_target_limit_entity
+                name: Doellimiet entiteit
+              - entity: input_text.ev_v3_charge_switch_entity
+                name: Laadschakelaar entiteit
+              - type: divider
+              - type: button
+                name: Verwijder Voertuig Slot 3
+                icon: mdi:trash-can-outline
+                action_name: Verwijderen
+                tap_action:
+                  action: perform-action
+                  perform_action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.ev_v3_enabled
+                  confirmation:
+                    text: "Weet je zeker dat je Voertuig Slot 3 wilt uitschakelen/verwijderen?"
 
       # ── Voertuig Slot 4 ─────────────────────────────────────────────────────
-      - type: entities
-        title: Voertuig Slot 4
-        show_header_toggle: false
+      - type: vertical-stack
         visibility:
           - condition: state
             entity: input_boolean.ev_v4_enabled
             state: "on"
-        entities:
-          - entity: input_text.ev_v4_name
-            name: Naam voertuig
-          - entity: input_number.ev_v4_battery_capacity_kwh
-            name: Accucapaciteit
-          - entity: input_number.ev_v4_max_charge_power_kw
-            name: Max laadsnelheid
-          - entity: input_text.ev_v4_battery_sensor
-            name: Batterij sensor entiteit
-          - entity: input_text.ev_v4_target_limit_entity
-            name: Doellimiet entiteit
-          - entity: input_text.ev_v4_charge_switch_entity
-            name: Laadschakelaar entiteit
-          - type: divider
-          - type: button
-            name: Verwijder Voertuig Slot 4
-            icon: mdi:trash-can-outline
-            action_name: Verwijderen
-            tap_action:
-              action: perform-action
-              perform_action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.ev_v4_enabled
-              confirmation:
-                text: "Weet je zeker dat je Voertuig Slot 4 wilt uitschakelen/verwijderen?"
+        cards:
+          - type: markdown
+            content: >-
+              ### 🚗 Slot 4: {{ states('input_text.ev_v4_name') or 'Voertuig 4' }}
+              **{{ states('input_number.ev_v4_battery_capacity_kwh') }} kWh** · **{{ states('input_number.ev_v4_max_charge_power_kw') }} kW**{% if is_state('input_select.ev_active_vehicle', states('input_text.ev_v4_name')) %} · ✅ *Actief*{% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_v4_name
+                name: Naam voertuig
+              - entity: input_number.ev_v4_battery_capacity_kwh
+                name: Accucapaciteit
+              - entity: input_number.ev_v4_max_charge_power_kw
+                name: Max laadsnelheid
+              - entity: input_text.ev_v4_battery_sensor
+                name: Batterij sensor entiteit
+              - entity: input_text.ev_v4_target_limit_entity
+                name: Doellimiet entiteit
+              - entity: input_text.ev_v4_charge_switch_entity
+                name: Laadschakelaar entiteit
+              - type: divider
+              - type: button
+                name: Verwijder Voertuig Slot 4
+                icon: mdi:trash-can-outline
+                action_name: Verwijderen
+                tap_action:
+                  action: perform-action
+                  perform_action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.ev_v4_enabled
+                  confirmation:
+                    text: "Weet je zeker dat je Voertuig Slot 4 wilt uitschakelen/verwijderen?"
 
       # ── Voertuig Slot 5 ─────────────────────────────────────────────────────
-      - type: entities
-        title: Voertuig Slot 5
-        show_header_toggle: false
+      - type: vertical-stack
         visibility:
           - condition: state
             entity: input_boolean.ev_v5_enabled
             state: "on"
-        entities:
-          - entity: input_text.ev_v5_name
-            name: Naam voertuig
-          - entity: input_number.ev_v5_battery_capacity_kwh
-            name: Accucapaciteit
-          - entity: input_number.ev_v5_max_charge_power_kw
-            name: Max laadsnelheid
-          - entity: input_text.ev_v5_battery_sensor
-            name: Batterij sensor entiteit
-          - entity: input_text.ev_v5_target_limit_entity
-            name: Doellimiet entiteit
-          - entity: input_text.ev_v5_charge_switch_entity
-            name: Laadschakelaar entiteit
-          - type: divider
-          - type: button
-            name: Verwijder Voertuig Slot 5
-            icon: mdi:trash-can-outline
-            action_name: Verwijderen
-            tap_action:
-              action: perform-action
-              perform_action: input_boolean.turn_off
-              target:
-                entity_id: input_boolean.ev_v5_enabled
-              confirmation:
-                text: "Weet je zeker dat je Voertuig Slot 5 wilt uitschakelen/verwijderen?"
+        cards:
+          - type: markdown
+            content: >-
+              ### 🚗 Slot 5: {{ states('input_text.ev_v5_name') or 'Voertuig 5' }}
+              **{{ states('input_number.ev_v5_battery_capacity_kwh') }} kWh** · **{{ states('input_number.ev_v5_max_charge_power_kw') }} kW**{% if is_state('input_select.ev_active_vehicle', states('input_text.ev_v5_name')) %} · ✅ *Actief*{% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_v5_name
+                name: Naam voertuig
+              - entity: input_number.ev_v5_battery_capacity_kwh
+                name: Accucapaciteit
+              - entity: input_number.ev_v5_max_charge_power_kw
+                name: Max laadsnelheid
+              - entity: input_text.ev_v5_battery_sensor
+                name: Batterij sensor entiteit
+              - entity: input_text.ev_v5_target_limit_entity
+                name: Doellimiet entiteit
+              - entity: input_text.ev_v5_charge_switch_entity
+                name: Laadschakelaar entiteit
+              - type: divider
+              - type: button
+                name: Verwijder Voertuig Slot 5
+                icon: mdi:trash-can-outline
+                action_name: Verwijderen
+                tap_action:
+                  action: perform-action
+                  perform_action: input_boolean.turn_off
+                  target:
+                    entity_id: input_boolean.ev_v5_enabled
+                  confirmation:
+                    text: "Weet je zeker dat je Voertuig Slot 5 wilt uitschakelen/verwijderen?"
 
       # ── Knop: Nieuw voertuig toevoegen (wanneer minstens 1 slot vrij is) ───
       - type: entities
@@ -565,6 +590,26 @@ views:
               - condition: state
                 entity: input_boolean.ev_v5_enabled
                 state: "on"
+
+      # ── Standaard voertuigen herstellen ────────────────────────────────────
+      - type: entities
+        title: Reset voertuigslots
+        show_header_toggle: false
+        entities:
+          - type: button
+            name: Herstel standaard voertuigen
+            icon: mdi:car-wrench
+            action_name: Herstel
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.ev_apply_vehicle_defaults
+              confirmation:
+                text: >-
+                  Dit zet de 5 voertuigslots terug naar de standaardinstellingen
+                  (Slot 1: Skoda Elroq, Slot 2: Dacia Spring, Slots 3–5: uit).
+                  Doorgaan?
 
   - title: Advanced settings
     path: advanced-settings

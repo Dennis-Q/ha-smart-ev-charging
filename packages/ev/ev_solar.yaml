@@ -248,9 +248,12 @@ template:
           {% endif %}
 
       # Determine optimal phase mode
+      # For 1-phase vehicles (max_charge_power <= 3.7 kW, e.g. Dacia Spring),
+      # always stay in single_phase when excess >= min_charge_threshold so the
+      # charger regulates up to 16 A on L1 (3.7 kW) instead of dividing surplus
+      # across 3 phases and halving the car's actual charge rate.
       - name: "EV Optimal Charging Phase Mode"
         unique_id: ev_optimal_charging_phase_mode
-          #  {% set excess = states('sensor.ev_grid_excess_power') | float(0) %}
         state: >
           {% set excess = states('sensor.ev_grid_excess_power_smoothed') | float(0) %}
           {% set single_phase_amps = states('sensor.ev_available_charging_amps_single_phase') | int(0) %}
@@ -259,8 +262,12 @@ template:
           {% set switch_to_3phase_threshold = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(4800) %}
           {% set switch_to_1phase_threshold = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(3500) %}
           {% set min_charge_threshold = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) %}
+          {% set max_car_power_kw = states('sensor.ev_active_max_charge_power') | float(11.0) %}
+          {% set single_phase_car = max_car_power_kw <= 3.7 %}
           {% if excess < min_charge_threshold %}
             stop
+          {% elif single_phase_car %}
+            single_phase
           {% elif excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
             three_phase
           {% elif excess <= switch_to_1phase_threshold %}
