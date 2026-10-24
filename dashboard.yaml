@@ -294,6 +294,8 @@ views:
           - entity: sensor.ev_sufficient_known_hours_in_window
           - entity: binary_sensor.ev_window_prices_known
             name: Prices known until window end
+          - entity: binary_sensor.ev_window_prices_late
+            name: Window prices late (after 14:00)
       - type: vertical-stack
         cards:
           # Upcoming prices (configured price source, via ev_energy_prices_data)
@@ -338,8 +340,10 @@ views:
               — {{ states('sensor.ev_hours_needed_for_charging') }} h needed
 
               **Prices known until:** {{ as_timestamp(known) | timestamp_custom('%a %H:%M') if known else 'no price data' }}
-              {%- if is_state('binary_sensor.ev_window_prices_known', 'off') and known %}
-              — ⚠️ {{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }} h of the window (until {{ as_timestamp(states('sensor.ev_charging_window_end_time')) | timestamp_custom('%a %H:%M') }}) not priced yet; selection only covers the known part
+              {%- if is_state('binary_sensor.ev_window_prices_late', 'on') %}
+              — ⚠️ **late:** {{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }} h of the window (until {{ as_timestamp(states('sensor.ev_charging_window_end_time')) | timestamp_custom('%a %H:%M') }}) still not priced after 14:00; selection only covers the known part
+              {%- elif is_state('binary_sensor.ev_window_prices_known', 'off') %}
+              — next-day prices expected around 13:15; until then the selection only covers the known part
               {%- endif %}
               {%- if state_attr('sensor.ev_energy_prices_data', 'stale') %}
 

@@ -437,6 +437,76 @@ automation:
                 data:
                   notification_id: ev_price_data_stale
 
+  - id: ev_window_prices_late_notification
+    alias: "EV: Window prices late notification"
+    description: >-
+      Notifies when, after 14:00, the price data still does not reach the end
+      of the charging window (next-day prices not published or not loaded),
+      while window charging with tariff optimisation is on. The cheapest-slot
+      selection then only sees the known part of the window. Clears when the
+      window is fully priced.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_window_prices_late
+        to: "on"
+        for: "00:05:00"
+        id: late
+      - trigger: state
+        entity_id: binary_sensor.ev_window_prices_late
+        to: "off"
+        id: resolved
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: late
+              - condition: state
+                entity_id: input_boolean.ev_window_charging
+                state: "on"
+              - condition: state
+                entity_id: input_boolean.ev_dynamic_tariff_optimization
+                state: "on"
+            sequence:
+              - variables:
+                  known_until: >-
+                    {% set k = state_attr('binary_sensor.ev_window_prices_known', 'known_until') %}
+                    {{ as_timestamp(k) | timestamp_custom('%a %H:%M') if k else 'no price data' }}
+                  window_end: >-
+                    {{ as_timestamp(states('sensor.ev_charging_window_end_time'), 0) | timestamp_custom('%a %H:%M') }}
+                  missing: "{{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }}"
+                  source: "{{ state_attr('sensor.ev_energy_prices_data', 'source') }}"
+              - action: script.ev_notify_dispatch
+                data:
+                  title: "EV: Prices for the window not known yet"
+                  message: >-
+                    Prices known until {{ known_until }}, window ends
+                    {{ window_end }} ({{ missing }} h unpriced). Cheapest-hours
+                    charging only compares the known part. Source: {{ source }}.
+                  tag: ev_window_prices_late
+                  color: orange
+                  priority: high
+              - action: persistent_notification.create
+                data:
+                  notification_id: ev_window_prices_late
+                  title: "EV: Prices for the window not known yet"
+                  message: >-
+                    Prices are known until **{{ known_until }}**, the charging
+                    window ends **{{ window_end }}** ({{ missing }} h unpriced).
+                    Next-day prices are normally published around 13:15. Until
+                    they arrive, cheapest-hours charging only compares the
+                    known part of the window.
+
+                    Source: `{{ source }}` — see **EV Charging → Advanced
+                    settings → Price data**.
+          - conditions:
+              - condition: trigger
+                id: resolved
+            sequence:
+              - action: persistent_notification.dismiss
+                data:
+                  notification_id: ev_window_prices_late
+
   - id: ev_power_entity_unit_mismatch_notification
     alias: "EV: Power entity unit mismatch notification"
     description: >-

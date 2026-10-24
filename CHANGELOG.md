@@ -14,6 +14,13 @@ All notable changes to this project will be documented here.
   does not change charging yet. Motivation (prod 2026-10-23): with the window at 08:00–07:00
   the selection ran on today's prices only — ENTSO-E published tomorrow's at 22:24 — so it
   charged at €0.12–0.16 midday and evening while the night was €0.02.
+- **`binary_sensor.ev_window_prices_late`** (device_class problem) — on when it is after 14:00
+  and the window is still not fully priced. Frank Energie publishes the next day at 13:15
+  (prod, every day 2026-10-21..23), so before 14:00 an incomplete window is normal for a window
+  that ends the next morning; the dashboard only says "expected around 13:15" then.
+- **`ev_window_prices_late_notification`** — push + persistent notification when that sensor
+  has been on for 5 minutes while window charging with tariff optimisation is on; the
+  persistent notification clears once the window is fully priced.
 
 ## [0.2.17] – 2026-10-14
 

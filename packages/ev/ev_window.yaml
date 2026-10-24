@@ -170,6 +170,20 @@ template:
             {{ ([we - ku, 0] | max / 3600) | round(1) if we > 0 else none }}
 
   - binary_sensor:
+      # Next-day prices are late: after 14:00 the window is still not fully
+      # priced. Frank Energie publishes the next day at 13:15 (prod, every day
+      # 2026-10-21..23); before 14:00 an incomplete window is normal with a
+      # window that ends the next morning. Drives the dashboard warning and
+      # ev_window_prices_late_notification.
+      - name: "EV Window Prices Late"
+        unique_id: ev_window_prices_late
+        device_class: problem
+        state: "{{ now().hour >= 14 and is_state('binary_sensor.ev_window_prices_known', 'off') }}"
+        attributes:
+          known_until: "{{ state_attr('binary_sensor.ev_window_prices_known', 'known_until') }}"
+          missing_hours: "{{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }}"
+
+  - binary_sensor:
       # Off when the max price limit is enabled and the current slot is above
       # it, or when there is no current price (fail closed: an enabled limit
       # never charges at an unknown price). Always on when the limit is off.
