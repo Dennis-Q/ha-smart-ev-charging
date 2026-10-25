@@ -60,7 +60,39 @@ if [ -z "$VERSION" ]; then
     fi
 fi
 
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+# Resolve a branch to its latest commit: sets COMMIT_SHA, COMMIT_DATE, COMMIT_MSG.
+# Plain curl/grep/sed (no jq or python on a stock HA SSH add-on). Returns non-zero
+# when the GitHub API is unreachable or rate-limited. grep reads a here-string, not a
+# pipe: with pipefail, grep -m1 stopping early on a large response (a merge commit
+# with a big diff, 100+ KB) gave printf SIGPIPE and failed the whole lookup.
+resolve_commit() {
+    local json
+    json=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+           "https://api.github.com/repos/${REPO}/commits/$1" 2>/dev/null) || return 1
+    COMMIT_SHA=$(grep -m1 -o '"sha": *"[0-9a-f]\{40\}"' <<<"$json" \
+                 | grep -o '[0-9a-f]\{40\}') || return 1
+    COMMIT_DATE=$(grep -m1 -o '"date": *"[^"]*"' <<<"$json" | cut -d'"' -f4 | cut -c1-10)
+    COMMIT_MSG=$(grep -m1 -o '"message": *"\([^"\\]\|\\.\)*"' <<<"$json" \
+                 | sed -e 's/^"message": *"//' -e 's/"$//' -e 's/\\n.*//' -e 's/\\"/"/g')
+    [ -n "$COMMIT_SHA" ]
+}
+
+# A release tag (v...) identifies a build by itself. Anything else (dev, main, a
+# commit hash) is resolved to the commit it points at and every file is downloaded
+# from that exact commit: by branch name, raw.githubusercontent.com caches each file
+# for a few minutes and one run could mix two commits.
+COMMIT_LINE=""
+if [[ "$VERSION" =~ ^v[0-9] ]]; then
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+    DISPLAY_REF="git ref: ${VERSION}"
+elif resolve_commit "$VERSION"; then
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${COMMIT_SHA}"
+    DISPLAY_REF="branch : ${VERSION} @ ${COMMIT_SHA:0:7} (${COMMIT_DATE})"
+    COMMIT_LINE="Commit  : ${COMMIT_MSG}"
+else
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+    DISPLAY_REF="branch : ${VERSION} (latest commit unknown — offline, API rate limit or unknown branch)"
+fi
 
 # ── Download helper ───────────────────────────────────────────────────────────
 
@@ -78,7 +110,8 @@ RELEASE_VERSION=$(curl -fsSL "${BASE_URL}/VERSION" 2>/dev/null | tr -d '[:space:
 echo ""
 hr
 echo "  ha-smart-ev-charging — installer"
-echo "  Release : ${RELEASE_VERSION}  (git ref: ${VERSION})"
+echo "  Release : ${RELEASE_VERSION}  (${DISPLAY_REF})"
+[ -n "$COMMIT_LINE" ] && echo "  ${COMMIT_LINE}"
 echo "  Target  : ${CONFIG_DIR}"
 hr
 echo ""

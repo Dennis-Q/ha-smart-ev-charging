@@ -29,6 +29,12 @@ All notable changes to this project will be documented here.
   *Batteries first* kWh reserve) — without it EV solar mode took the surplus HBA was holding
   for the batteries.
 
+### Changed
+- **Installer shows the commit** for a branch install (`EV_VERSION=dev` / `main`): branch, short
+  hash, date and commit message, like the HBA installer. Every file is then downloaded from that
+  exact commit — by branch name, raw.githubusercontent.com caches files for a few minutes, so one
+  run could mix two commits. Release tags are shown as before.
+
 ## [0.2.17] – 2026-10-14
 
 ### Added
