@@ -240,6 +240,9 @@ done
 # Dashboard is at repo root but lands under lovelace/ in /config
 download "dashboard.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard.yaml"
 ok "lovelace/ev_dashboard.yaml"
+# Preview dashboard (optional — only shown once registered in configuration.yaml)
+download "dashboard_preview.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard_preview.yaml"
+ok "lovelace/ev_dashboard_preview.yaml  (preview dashboard, optional)"
 
 # Record installed version (hidden file — not loaded by HA)
 echo "$RELEASE_VERSION" > "${CONFIG_DIR}/packages/ev/.ev_charging_version"

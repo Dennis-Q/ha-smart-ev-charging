@@ -35,6 +35,11 @@ All notable changes to this project will be documented here.
   exact commit — by branch name, raw.githubusercontent.com caches files for a few minutes, so one
   run could mix two commits. Release tags are shown as before.
 
+### Added (preview)
+- **Preview dashboard** `dashboard_preview.yaml` → `lovelace/ev_dashboard_preview.yaml` (installer).
+  Dashboard improvements from the 2026-10-25 review land there first; shown once registered under
+  `lovelace: dashboards:` (e.g. `ev-preview`, `filename: lovelace/ev_dashboard_preview.yaml`).
+
 ## [0.2.17] – 2026-10-14
 
 ### Added

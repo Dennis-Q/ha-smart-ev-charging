@@ -1,0 +1,797 @@
+# EV charging — PREVIEW dashboard (improvements from the 2026-10-25 dashboard review land here first)
+# Installed as lovelace/ev_dashboard_preview.yaml; registered separately (e.g. URL /ev-preview/).
+views:
+  - title: EV Solar Charging
+    cards:
+      # ── Red banner: charger warnings or errors active ────────────────────────
+      - type: markdown
+        content: >-
+          {%- set ns = namespace(w=[], e=[]) -%}
+          {%- for i in [1,2,3,4,5] -%}
+          {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
+          {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
+          {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
+          {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
+          {%- endfor -%}
+          <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
+          {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
+          {% if ns.w %}Warnings: <strong>{{ ns.w | join(', ') }}</strong>{% endif %}</ha-alert>
+        visibility:
+          - condition: or
+            conditions:
+              - condition: state
+                entity: binary_sensor.peblar_ev_charger_active_warnings
+                state: "on"
+              - condition: state
+                entity: binary_sensor.peblar_ev_charger_active_errors
+                state: "on"
+      # ── Red banner: defaults not applied ────────────────────────────────────
+      # ev_power_buffer_watts == -7000 (the helper's min) is treated as the
+      # "user has never run apply_defaults" signal. After apply_defaults it
+      # becomes 0, and the banner + button hide.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="error"><strong>EV defaults not
+          applied</strong><br>The power buffer is at <strong>−7000 W</strong>,
+          which indicates the project's default values have not been applied
+          yet. Click the button below to run
+          <code>script.ev_apply_defaults</code> and set all helpers to sensible
+          starting values.</ha-alert>
+        visibility:
+          - condition: numeric_state
+            entity: input_number.ev_power_buffer_watts
+            below: -6999.5
+      - type: entities
+        show_header_toggle: false
+        state_color: false
+        entities:
+          - type: button
+            name: EV defaults
+            icon: mdi:tune-vertical
+            action_name: Apply
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.ev_apply_defaults
+              confirmation:
+                text: >-
+                  This will overwrite every user-configurable EV helper with
+                  the project's default values. Internal state (force-charge
+                  timeout) is preserved. Continue?
+        visibility:
+          - condition: numeric_state
+            entity: input_number.ev_power_buffer_watts
+            below: -6999.5
+      # ── Yellow banner: notify target invalid ───────────────────────────────
+      # Shown when binary_sensor.ev_notify_target_invalid is 'on'. Mirrors
+      # the persistent_notification.create from ev_validate_notify_target,
+      # but as a dashboard banner — more visible than the bell icon and
+      # immune to the modern-HA quirk where persistent notifications aren't
+      # exposed as state entities.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="warning"><strong>EV notify action not
+          configured</strong><br>The <code>input_text.ev_notify_entity_id</code>
+          helper is empty, malformed, or points to a target that doesn't
+          exist. EV notifications fall back to HA persistent notifications
+          until you set a valid target under <strong>Advanced settings →
+          Notifications</strong>.<br><br>Current value:
+          <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
+          Available targets:
+          <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') | join(', ') or '(none found)' }}</code>
+          </ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_notify_target_invalid
+            state: "on"
+      # ── Yellow banner: phase-switch thresholds off recommendation ──────────
+      # Shown if ANY of the three solar thresholds isn't at its recommended
+      # value (4800 / 3500 / 1380). Lists current vs recommended inline.
+      - type: markdown
+        content: >-
+          {% set v3 = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(0) | int %}
+
+          {% set v1 = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(0) | int %}
+
+          {% set vmin = states('input_number.ev_solar_min_charge_threshold_w') | float(0) | int %}
+
+          <ha-alert alert-type="warning"><strong>Solar phase-switch thresholds
+          are not at recommended values</strong><br>
+          • Switch to 3-phase above: <strong>{{ v3 }} W</strong>{% if v3 != 4800 %} — recommended <strong>4800</strong>{% else %} ✓{% endif %}<br>
+          • Switch back to 1-phase below: <strong>{{ v1 }} W</strong>{% if v1 != 3500 %} — recommended <strong>3500</strong>{% else %} ✓{% endif %}<br>
+          • Stop charging below: <strong>{{ vmin }} W</strong>{% if vmin != 1380 %} — recommended <strong>1380</strong>{% else %} ✓{% endif %}<br>
+          <br>Adjust under <strong>Advanced settings</strong>, or run
+          <strong>Apply defaults</strong> to reset.</ha-alert>
+        visibility:
+          - condition: or
+            conditions:
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                below: 4800
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                above: 4800
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                below: 3500
+              - condition: numeric_state
+                entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                above: 3500
+              - condition: numeric_state
+                entity: input_number.ev_solar_min_charge_threshold_w
+                below: 1380
+              - condition: numeric_state
+                entity: input_number.ev_solar_min_charge_threshold_w
+                above: 1380
+      # ── Red banner: power entity unit mismatch ───────────────────────────
+      # Shown when a configured solar or home battery power entity reports
+      # in kW instead of W. Attributes show the unit of each entity.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="error"><strong>Power entity unit
+          mismatch</strong><br>A configured solar or home battery power
+          entity is reporting in <strong>kW</strong> instead of
+          <strong>W</strong>. Charging calculations will produce incorrect
+          results.<br>
+          • Solar entity 1: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_1_unit') }}</strong><br>
+          • Solar entity 2: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_2_unit') }}</strong><br>
+          • Battery entity: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'battery_entity_unit') }}</strong><br><br>
+          To fix: change the unit of the entity to <strong>W</strong> in Home Assistant
+          (Settings → Devices &amp; Services → Entities → select entity → Unit of measurement).
+          Note this may affect other automations or dashboards using the same entity.</ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_power_entity_unit_mismatch
+            state: "on"
+      # ── Red banner: P1 sensor unit mismatch ──────────────────────────────
+      # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
+      # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
+      # to W, but other units (Wh, kWh, etc.) will produce wrong results.
+      - type: markdown
+        content: >-
+          <ha-alert alert-type="error"><strong>P1 sensor unit
+          mismatch</strong><br>One or both P1 power sensors are not reporting
+          in <strong>W</strong>. The solar excess calculation expects watts —
+          a different unit will produce wrong results.<br>
+          • Consumption: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_consumption') }}</strong><br>
+          • Production: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_production') }}</strong><br><br>
+          Check your P1 meter integration and make sure it exposes power in
+          <strong>W</strong>.</ha-alert>
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_p1_unit_mismatch
+            state: "on"
+      - type: entities
+        title: EV Charging Settings
+        entities:
+          - entity: input_boolean.ev_manual_override
+            name: Manual Override (stop HA)
+          - type: divider
+          - entity: input_boolean.ev_solar_charging
+          - entity: input_boolean.ev_battery_assist_charging
+          - entity: input_boolean.ev_window_charging
+          - entity: input_number.ev_window_charging_start_hour
+            name: Window Start (Hour)
+          - entity: input_number.ev_window_charging_end_hour
+            name: Window End (Hour)
+          - entity: input_boolean.ev_dynamic_tariff_optimization
+          - entity: input_boolean.ev_window_max_price_enabled
+            name: Window Max Price Limit
+          - entity: input_number.ev_window_charging_max_price
+            name: Window Max Price (€/kWh)
+          - entity: input_boolean.ev_charge_prefer_tariff_over_solar
+          - type: divider
+          - entity: input_boolean.ev_force_charge_permanent
+            name: Force Max Charge (permanent)
+          - entity: input_boolean.ev_force_charge_once
+            name: Force Max Charge (8-hour limit)
+          - entity: input_datetime.ev_force_charge_timeout
+            name: Force Charge Timeout At
+          - type: divider
+          - entity: input_number.ev_battery_capacity_kwh
+            name: Battery Capacity (kWh)
+          - entity: input_number.ev_charger_max_power_kw
+            name: Charger Maximum Power (kW)
+          - entity: input_number.ev_charging_efficiency_percent
+            name: Charging Efficiency (%)
+          - entity: input_number.ev_power_buffer_watts
+            name: Power Buffer (W)
+      - type: entities
+        title: Charging Limits
+        entities:
+          - entity: input_number.ev_charging_limit_solar
+            name: Solar Charging Limit (%)
+          - entity: input_number.ev_charging_limit_window
+            name: Window Charging Limit (%)
+          - entity: input_number.ev_charging_limit_force
+            name: Force Charging Limit (%)
+          - type: divider
+          - entity: number.skoda_elroq_charge_limit
+            name: Current Car Limit
+      - type: entities
+        title: EV Charging Status
+        entities:
+          - entity: binary_sensor.skoda_elroq_charger_connected
+            name: Cable Connected
+          - entity: sensor.skoda_elroq_battery_percentage
+            name: Battery Level
+          - entity: sensor.skoda_elroq_range
+            name: Range (left)
+          - entity: sensor.skoda_elroq_target_battery_percentage
+            name: Car Charging Limit
+          - entity: sensor.ev_expected_charging_limit
+            name: Expected Charging Limit
+          - entity: sensor.ev_charging_mode
+            name: Charging Mode
+          - entity: binary_sensor.ev_solar_viable
+            name: Solar Viable
+          - entity: sensor.peblar_ev_charger_power
+            name: Charger Current Power
+          - entity: sensor.peblar_ev_charger_state
+            name: Peblar Charger State
+          - entity: binary_sensor.ev_is_charging
+          - entity: binary_sensor.ev_is_connected
+      - type: entities
+        title: Dynamic Tariff Information
+        entities:
+          - entity: sensor.frank_energie_prices_current_electricity_price_all_in
+            name: Current Price (Frank)
+          - entity: sensor.frank_energie_prices_current_electricity_market_price
+          - entity: sensor.current_electricity_market_price
+            name: Current Price (Entso-e)
+          - entity: sensor.average_electricity_price
+            name: Average Price (Entso-e)
+      - type: entities
+        title: Power Management
+        entities:
+          - entity: sensor.ev_grid_excess_power
+            name: Excess Power (Raw)
+          - entity: sensor.ev_grid_excess_power_smoothed
+          - entity: sensor.ev_optimal_charging_phase_mode
+            name: Optimal Phase Mode
+          - type: divider
+          - entity: sensor.ev_available_charging_amps_single_phase
+            name: Available Amps (1-Phase)
+          - entity: sensor.ev_available_charging_ma_single_phase
+            name: Available mA (1-Phase, calculated)
+          - entity: sensor.ev_available_charging_amps_three_phase
+            name: Available Amps (3-Phase)
+          - entity: sensor.ev_available_charging_ma_three_phase
+            name: Available mA (3-Phase, calculated)
+          - type: divider
+          - entity: sensor.peblar_ev_charger_charge_current_limit_raw
+            name: Setpoint sent (mA, reg 40000)
+          - entity: sensor.peblar_ev_charger_charge_current_limit_actual
+            name: Effective limit (mA, reg 30113)
+      - type: entities
+        title: Charge Control
+        entities:
+          - entity: switch.peblar_ev_charger_force_single_phase
+            name: Single Phase Mode
+          - entity: number.peblar_ev_charger_charge_current_limit_ma
+            name: Charger Limit (mA — solar control)
+          - entity: number.peblar_ev_charger_charge_limit
+            name: Charger Limit (A — manual / display)
+          - entity: switch.peblar_ev_charger_charge
+            name: Peblar Charger On/Off
+          - type: divider
+          - entity: switch.skoda_elroq_charging
+            name: Car Charging On/Off
+      - type: entities
+        title: Window Charging
+        entities:
+          - entity: sensor.ev_charging_window_start_time
+            name: EV Charging Start Time
+          - entity: sensor.ev_charging_window_end_time
+            name: EV Charging End Time
+          - entity: sensor.ev_charging_window_active
+          - entity: binary_sensor.ev_window_price_allowed
+            name: Window Price Allowed (below max)
+          - entity: sensor.ev_hours_needed_for_charging
+          - entity: sensor.ev_cheapest_hours_in_window
+          - entity: sensor.ev_window_latest_start_time
+          - entity: sensor.ev_is_in_cheapest_window
+          - entity: sensor.ev_sufficient_hours_to_charge_in_window
+          - entity: sensor.ev_sufficient_known_hours_in_window
+          - entity: binary_sensor.ev_window_prices_known
+            name: Prices known until window end
+          - entity: binary_sensor.ev_window_prices_late
+            name: Window prices late (after 14:00)
+      - type: vertical-stack
+        cards:
+          # Upcoming prices (configured price source, via ev_energy_prices_data)
+          # with the slots the window/cheapest logic selected highlighted.
+          - type: custom:apexcharts-card
+            graph_span: 36h
+            span:
+              start: hour
+            now:
+              show: true
+              label: Now
+            header:
+              show: true
+              title: Charging plan (€/kWh)
+              show_states: false
+            yaxis:
+              - decimals: 2
+            series:
+              - entity: sensor.ev_energy_prices_data
+                name: Price
+                type: column
+                color: "#9e9e9e"
+                opacity: 0.4
+                float_precision: 3
+                data_generator: |
+                  return (entity.attributes.slots || []).map((s) => [s.ts * 1000, s.price]);
+              - entity: sensor.ev_cheapest_hours_in_window
+                name: Selected
+                type: column
+                color: "#4caf50"
+                opacity: 1
+                float_precision: 3
+                data_generator: |
+                  return (entity.attributes.slots || []).map((s) => [s.ts * 1000, s.price]);
+          - type: markdown
+            content: >-
+              {% set d = state_attr('sensor.ev_energy_prices_data', 'slots') or [] %}
+              {% set sel = state_attr('sensor.ev_cheapest_hours_in_window', 'slots') or [] %}
+              {% set known = state_attr('binary_sensor.ev_window_prices_known', 'known_until') %}
+              {% set src = state_attr('sensor.ev_energy_prices_data', 'source') %}
+              **Selected:** {% if sel | length == 0 %}none{% else %}{% for s in sel %}{{ s.ts | timestamp_custom('%a %H:%M') }} (€{{ '%.3f' | format(s.price) }}){{ ', ' if not loop.last }}{% endfor %}{% endif %}
+              — {{ states('sensor.ev_hours_needed_for_charging') }} h needed
+
+              **Prices known until:** {{ as_timestamp(known) | timestamp_custom('%a %H:%M') if known else 'no price data' }}
+              {%- if is_state('binary_sensor.ev_window_prices_late', 'on') %}
+              — ⚠️ **late:** {{ state_attr('binary_sensor.ev_window_prices_known', 'missing_hours') }} h of the window (until {{ as_timestamp(states('sensor.ev_charging_window_end_time')) | timestamp_custom('%a %H:%M') }}) still not priced after 14:00; selection only covers the known part
+              {%- elif is_state('binary_sensor.ev_window_prices_known', 'off') %}
+              — next-day prices expected around 13:15; until then the selection only covers the known part
+              {%- endif %}
+              {%- if state_attr('sensor.ev_energy_prices_data', 'stale') %}
+
+              ⚠️ **{{ src }} has no prices** — using the last known slots
+              {%- endif %}
+
+              <small>Source: {{ src }} · {{ d | length }} slots · {{ state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') }}/h</small>
+      - type: entities
+        title: Debug Information
+        entities:
+          - entity: sensor.ev_debug_solar_values
+            name: Solar debug info
+          - type: attribute
+            name: Excess
+            entity: sensor.ev_debug_solar_values
+            attribute: excess
+          - entity: sensor.ev_charging_debug_info
+            name: EV charging debug info
+  - title: Advanced settings
+    path: advanced-settings
+    icon: mdi:tune
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Notifications
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.ev_notifications_enabled
+                name: Enable notifications
+              - type: divider
+              - entity: input_text.ev_notify_entity_id
+                name: Notify action
+              - entity: binary_sensor.ev_notify_target_invalid
+                name: Validation
+                icon: mdi:check-decagram
+              - type: divider
+              - type: button
+                name: Send test notification
+                icon: mdi:bell-ring-outline
+                action_name: Send
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.ev_notify_test
+          - type: markdown
+            content: >-
+              Enter a legacy `notify.*` service (not a notify entity). Leave empty to fall back to a persistent notification.
+
+              Available: `{{ state_attr('binary_sensor.ev_notify_target_invalid',
+              'available_notify_entities') | join(', ') or 'none found' }}`
+          - type: custom:auto-entities
+            card:
+              type: entities
+              title: Notification automations
+              show_header_toggle: false
+            filter:
+              include:
+                - entity_id: "automation.ev_*notif*"
+            sort:
+              method: friendly_name
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Solar — phase-switch thresholds
+            entities:
+              - entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                name: Switch to 3-phase above (W)
+              - entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                name: Switch back to 1-phase below (W)
+              - entity: input_number.ev_solar_min_charge_threshold_w
+                name: Stop charging below (W)
+              - type: divider
+              - type: button
+                name: Reset thresholds to recommended
+                icon: mdi:tune-vertical
+                action_name: Apply
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.ev_apply_threshold_defaults
+                  confirmation:
+                    text: >-
+                      Reset the three solar phase-switch thresholds to 4800 W /
+                      3500 W / 1380 W. Other settings are not affected. Continue?
+          - type: markdown
+            content: >-
+              Three-phase minimum is ~4140 W (6 A × 690 V); single-phase
+              minimum is ~1380 W (6 A × 230 V). Below the **stop charging**
+              threshold the controller pauses entirely.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Price data
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_price_entity
+                name: Price entity
+              - entity: sensor.ev_energy_prices_data
+                name: Price slots loaded
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: source
+                name: Source in use
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: slots_per_hour
+                name: Slots per hour
+              - type: attribute
+                entity: sensor.ev_energy_prices_data
+                attribute: stale
+                name: Source unavailable (keeping last known prices)
+          - type: markdown
+            content: >-
+              Sensor with a `prices` attribute (Frank Energie or ENTSO-E,
+              hourly or 15-minute). Leave empty for
+              `sensor.frank_energie_prices_current_electricity_price_all_in`.
+              Use the **all-in** sensor to make the window max price an
+              all-in price.
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Power entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_solar_power_entity_1
+                name: Solar power entity 1
+              - entity: input_text.ev_solar_power_entity_2
+                name: Solar power entity 2
+              - type: divider
+              - entity: input_text.ev_home_battery_power_entity
+                name: Home battery power entity
+              - entity: input_text.ev_home_battery_assist_active_entity
+                name: Battery assist active entity
+              - entity: input_text.ev_home_battery_priority_entity
+                name: Home battery priority entity
+              - type: divider
+              - entity: binary_sensor.ev_solar_viable
+                name: Solar viable (status)
+                icon: mdi:solar-power
+              - entity: binary_sensor.ev_charger_saturated
+                name: Charger saturated (status)
+                icon: mdi:car-speed-limiter
+              - entity: binary_sensor.ev_power_entity_unit_mismatch
+                name: Unit mismatch (status)
+          - type: markdown
+            content: >-
+              Point these at real-time power sensors reporting in **W** (not
+              kW). All fields are optional — leave empty if not applicable.
+
+              **Solar entity 1 / 2**: AC output of your inverter(s) in W.
+              Gates solar mode on measured production instead of sun
+              position. Two inverters (e.g. Enphase + SolarEdge) are summed.
+              Falls back to sun elevation > 5° when both are empty.
+
+              **Home battery power entity**: Bidirectional battery power
+              (positive = discharging to the home/grid, negative = charging).
+              The charging component is added back into the grid excess
+              calculation so solar absorbed by home batteries stays visible
+              to the EV charger; the discharging component is subtracted in
+              every mode except battery assist, so battery power exported to
+              the grid (e.g. a sell-to-grid strategy) is never mistaken for
+              solar surplus.
+              Example: `sensor.hba_total_battery_power`
+
+              **Battery assist active entity**: Binary sensor published by
+              your home battery system when it is willing to discharge for EV
+              charging. Requires **EV Battery Assist Charging** (main
+              settings) to also be enabled.
+              Example: `binary_sensor.hba_battery_assist_active`
+
+              **Home battery priority entity**: Binary sensor published by
+              your home battery system that is on while the battery should get
+              the solar surplus before the EV (e.g. below a reserve it wants
+              filled first). While on, the battery's charging power is no
+              longer added back, so the EV only gets what the battery leaves
+              over. Leave empty to always let the EV go first.
+              Example: `binary_sensor.hba_batteries_before_ev`
+      - type: entities
+        title: Reset
+        entities:
+          - entity: script.ev_apply_defaults
+            name: Apply defaults
+            secondary_info: last-triggered
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.ev_apply_defaults
+              confirmation:
+                text: >-
+                  This will overwrite every user-configurable EV helper with
+                  the project's default values. Internal state (force-charge
+                  timeout) is preserved. Continue?
+  - title: Elroq
+    sections:
+      - type: grid
+        cards:
+          - type: gauge
+            entity: sensor.skoda_elroq_battery_percentage
+            needle: false
+          - graph: none
+            type: sensor
+            entity: sensor.skoda_elroq_range
+            detail: 1
+            grid_options:
+              columns: full
+              rows: 2
+          - graph: line
+            type: sensor
+            detail: 1
+            entity: sensor.skoda_elroq_mileage
+            grid_options:
+              columns: full
+              rows: 2
+            hours_to_show: 168
+          - graph: none
+            type: sensor
+            entity: sensor.skoda_elroq_next_inspection
+            detail: 1
+            grid_options:
+              columns: full
+              rows: 2
+          - type: tile
+            entity: switch.skoda_elroq_charging
+            vertical: false
+            features_position: bottom
+            grid_options:
+              columns: full
+          - type: tile
+            entity: binary_sensor.skoda_elroq_doors_open
+          - type: tile
+            entity: binary_sensor.skoda_elroq_doors_locked
+          - type: tile
+            entity: binary_sensor.skoda_elroq_windows
+          - type: tile
+            entity: binary_sensor.skoda_elroq_trunk
+          - type: tile
+            entity: switch.peblar_ev_charger_force_single_phase
+          - type: tile
+            entity: number.peblar_ev_charger_charge_current_limit_ma
+          - type: tile
+            entity: switch.peblar_ev_charger_charge
+          - type: tile
+            entity: sensor.peblar_ev_charger_state
+          - type: tile
+            entity: climate.skoda_elroq_air_conditioning
+      - type: grid
+        cards:
+          - type: history-graph
+            entities:
+              - entity: binary_sensor.skoda_elroq_charger_connected
+              - entity: binary_sensor.skoda_elroq_charge_lock
+              - entity: number.skoda_elroq_charge_limit
+              - entity: sensor.skoda_elroq_charge_type
+              - entity: sensor.skoda_elroq_charging_power
+              - entity: sensor.skoda_elroq_battery_percentage
+            logarithmic_scale: false
+            hours_to_show: 48
+            grid_options:
+              columns: full
+        column_span: 3
+    badges:
+      - type: entity
+        show_name: true
+        show_state: false
+        show_icon: true
+        entity: image.skoda_elroq_main_render_of_vehicle
+        show_entity_picture: true
+        tap_action:
+          action: none
+    type: sections
+    max_columns: 4
+    cards: []
+  - type: sections
+    max_columns: 4
+    title: Automations
+    path: automations
+    sections:
+      - type: grid
+        cards:
+          - type: custom:auto-entities
+            card:
+              type: entities
+              title: EV Automations
+              show_header_toggle: false
+              state_color: true
+            filter:
+              include:
+                - domain: automation
+                  entity_id: automation.ev_*
+                  options:
+                    secondary_info: last-triggered
+            sort:
+              method: entity_id
+  - title: Frank
+    cards:
+      - type: custom:apexcharts-card
+        graph_span: 48h
+        span:
+          start: day
+        now:
+          show: true
+          label: Nu
+        header:
+          show: true
+          title: Energieprijs per uur (€/kwh)
+        series:
+          - entity: sensor.frank_energie_prices_current_electricity_price_all_in
+            show:
+              legend_value: false
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 0.3
+            color: "#03b2cb"
+            data_generator: |
+              return entity.attributes.prices.map((record, index) => {
+                return [record.from, record.price];
+              });
+          - entity: sensor.average_electricity_price
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 1
+            color: "#FF9800"
+            data_generator: |
+              return entity.attributes.prices.map((entry) => { 
+              return [new Date(entry.time), entry.price];
+              });
+      - type: custom:apexcharts-card
+        graph_span: 48h
+        span:
+          start: day
+        now:
+          show: true
+          label: Now
+        header:
+          show: true
+          title: Electriciteitsprijzen Vandaag (€/kwh)
+        yaxis:
+          - decimals: 2
+        series:
+          - entity: sensor.average_electricity_price
+            stroke_width: 2
+            float_precision: 3
+            type: column
+            opacity: 1
+            color: ""
+            data_generator: |
+              return entity.attributes.prices.map((entry) => { 
+              return [new Date(entry.time), entry.price];
+              });
+      - type: entities
+        entities:
+          - sensor.frank_energie_gasprices_current_gas_price_all_in
+  - title: Peblar Modbus
+    path: peblar-modbus
+    icon: mdi:ethernet
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: Per-phase power (modbus-only)
+            entities:
+              - sensor.peblar_ev_charger_power_phase_1
+              - sensor.peblar_ev_charger_power_phase_2
+              - sensor.peblar_ev_charger_power_phase_3
+          - type: entities
+            title: Charge limit detail
+            entities:
+              - entity: sensor.peblar_ev_charger_charge_current_limit_actual
+                name: Effective limit (all sources)
+              - entity: sensor.peblar_ev_charger_charge_current_limit_raw
+                name: Modbus setpoint (reg 40000)
+              - entity: sensor.peblar_ev_charger_lock_state
+                name: Lock state
+              - entity: sensor.peblar_ev_charger_cp_state_raw
+                name: CP state raw (ASCII)
+              - entity: sensor.peblar_ev_charger_fallback_current_raw
+                name: Fallback current
+          - type: entities
+            title: Errors & Warnings
+            entities:
+              - binary_sensor.peblar_ev_charger_active_errors
+              - binary_sensor.peblar_ev_charger_active_warnings
+              - type: divider
+              - entity: sensor.peblar_ev_charger_active_error_1
+                name: Error 1
+              - entity: sensor.peblar_ev_charger_active_error_2
+                name: Error 2
+              - entity: sensor.peblar_ev_charger_active_error_3
+                name: Error 3
+              - entity: sensor.peblar_ev_charger_active_error_4
+                name: Error 4
+              - entity: sensor.peblar_ev_charger_active_error_5
+                name: Error 5
+              - type: divider
+              - entity: sensor.peblar_ev_charger_active_warning_1
+                name: Warning 1
+              - entity: sensor.peblar_ev_charger_active_warning_2
+                name: Warning 2
+              - entity: sensor.peblar_ev_charger_active_warning_3
+                name: Warning 3
+              - entity: sensor.peblar_ev_charger_active_warning_4
+                name: Warning 4
+              - entity: sensor.peblar_ev_charger_active_warning_5
+                name: Warning 5
+          - type: entities
+            title: Modbus controls
+            entities:
+              - entity: input_number.peblar_ev_charger_charge_limit_desired
+                name: Desired charge limit
+              - entity: number.peblar_ev_charger_charge_current_limit_ma
+                name: Raw setpoint (mA, reg 40000)
+              - entity: number.peblar_ev_charger_fallback_current
+                name: Fallback current setpoint
+              - entity: number.peblar_ev_charger_alive_timeout
+                name: Alive timeout setpoint
+          - type: entities
+            title: Device info
+            entities:
+              - entity: sensor.peblar_ev_charger_product_sn
+                name: Serial number
+              - entity: sensor.peblar_ev_charger_product_pn
+                name: Part number
+              - entity: sensor.peblar_ev_charger_firmware_version
+                name: Firmware version
+              - entity: sensor.peblar_ev_charger_hardware_identifier
+                name: Hardware identifier
+              - entity: sensor.peblar_ev_charger_phase_count
+                name: Phase count
+              - entity: sensor.peblar_ev_charger_independent_relays
+                name: Independent relays
+              - entity: sensor.peblar_ev_charger_modbus_api_version_major
+                name: Modbus API version (major)
+              - entity: sensor.peblar_ev_charger_modbus_api_version_minor
+                name: Modbus API version (minor)
+          - type: entities
+            title: Connectivity
+            entities:
+              - entity: sensor.peblar_ev_charger_wlan_signal_strength
+                name: WLAN signal
+              - entity: sensor.peblar_ev_charger_cellular_signal_strength
+                name: Cellular signal
+              - entity: sensor.peblar_ev_charger_uptime
+                name: Uptime (s)
