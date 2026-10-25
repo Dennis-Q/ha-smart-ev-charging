@@ -164,6 +164,7 @@ views:
             state: "on"
       - type: entities
         title: EV Charging Settings
+        show_header_toggle: false
         entities:
           - entity: input_boolean.ev_manual_override
             name: Manual Override (stop HA)
@@ -236,12 +237,13 @@ views:
         title: Dynamic Tariff Information
         entities:
           - entity: sensor.frank_energie_prices_current_electricity_price_all_in
-            name: Current Price (Frank)
+            name: Frank all-in (now)
           - entity: sensor.frank_energie_prices_current_electricity_market_price
+            name: Frank market price (now)
           - entity: sensor.current_electricity_market_price
-            name: Current Price (Entso-e)
+            name: ENTSO-E market price (now)
           - entity: sensor.average_electricity_price
-            name: Average Price (Entso-e)
+            name: ENTSO-E average price
       - type: entities
         title: Power Management
         entities:
@@ -266,6 +268,7 @@ views:
             name: Effective limit (mA, reg 30113)
       - type: entities
         title: Charge Control
+        show_header_toggle: false
         entities:
           - entity: switch.peblar_ev_charger_force_single_phase
             name: Single Phase Mode
@@ -278,26 +281,22 @@ views:
           - type: divider
           - entity: switch.skoda_elroq_charging
             name: Car Charging On/Off
-      - type: entities
+      - type: markdown
         title: Window Charging
-        entities:
-          - entity: sensor.ev_charging_window_start_time
-            name: EV Charging Start Time
-          - entity: sensor.ev_charging_window_end_time
-            name: EV Charging End Time
-          - entity: sensor.ev_charging_window_active
-          - entity: binary_sensor.ev_window_price_allowed
-            name: Window Price Allowed (below max)
-          - entity: sensor.ev_hours_needed_for_charging
-          - entity: sensor.ev_cheapest_hours_in_window
-          - entity: sensor.ev_window_latest_start_time
-          - entity: sensor.ev_is_in_cheapest_window
-          - entity: sensor.ev_sufficient_hours_to_charge_in_window
-          - entity: sensor.ev_sufficient_known_hours_in_window
-          - entity: binary_sensor.ev_window_prices_known
-            name: Prices known until window end
-          - entity: binary_sensor.ev_window_prices_late
-            name: Window prices late (after 14:00)
+        content: |-
+          {%- macro yn(v) -%}{{ 'yes' if v in [true, 'true', 'on', 'True'] else ('no' if v in [false, 'false', 'off', 'False'] else '–') }}{%- endmacro -%}
+          {%- macro t(e) -%}{%- set v = states(e) -%}{{ as_timestamp(v) | timestamp_custom('%a %H:%M') if as_timestamp(v, none) is not none else '–' }}{%- endmacro -%}
+          | | |
+          |---|---|
+          | Window | {{ t('sensor.ev_charging_window_start_time') }} → {{ t('sensor.ev_charging_window_end_time') }} (active: {{ yn(states('sensor.ev_charging_window_active')) }}) |
+          | Price allowed (below max) | {{ yn(states('binary_sensor.ev_window_price_allowed')) }} |
+          | Hours needed | {{ states('sensor.ev_hours_needed_for_charging') }} h |
+          | Cheapest hours in window | {{ states('sensor.ev_cheapest_hours_in_window') }} |
+          | Latest start | {{ t('sensor.ev_window_latest_start_time') }} |
+          | In a cheapest slot now | {{ yn(states('sensor.ev_is_in_cheapest_window')) }} |
+          | Enough hours in window | {{ yn(states('sensor.ev_sufficient_hours_to_charge_in_window')) }} (with known prices: {{ yn(states('sensor.ev_sufficient_known_hours_in_window')) }}) |
+          | Prices known until window end | {{ yn(states('binary_sensor.ev_window_prices_known')) }} |
+          | Prices late (after 14:00) | {{ yn(states('binary_sensor.ev_window_prices_late')) }} |
       - type: vertical-stack
         cards:
           # Upcoming prices (configured price source, via ev_energy_prices_data)
@@ -450,10 +449,6 @@ views:
                 name: Price slots loaded
               - type: attribute
                 entity: sensor.ev_energy_prices_data
-                attribute: source
-                name: Source in use
-              - type: attribute
-                entity: sensor.ev_energy_prices_data
                 attribute: slots_per_hour
                 name: Slots per hour
               - type: attribute
@@ -462,6 +457,8 @@ views:
                 name: Source unavailable (keeping last known prices)
           - type: markdown
             content: >-
+              Source in use: `{{ state_attr('sensor.ev_energy_prices_data', 'source') or '–' }}`
+
               Sensor with a `prices` attribute (Frank Energie or ENTSO-E,
               hourly or 15-minute). Leave empty for
               `sensor.frank_energie_prices_current_electricity_price_all_in`.
@@ -651,10 +648,10 @@ views:
           start: day
         now:
           show: true
-          label: Nu
+          label: Now
         header:
           show: true
-          title: Energieprijs per uur (€/kwh)
+          title: Energy price per hour (€/kWh)
         series:
           - entity: sensor.frank_energie_prices_current_electricity_price_all_in
             show:
@@ -735,27 +732,77 @@ views:
               - binary_sensor.peblar_ev_charger_active_errors
               - binary_sensor.peblar_ev_charger_active_warnings
               - type: divider
-              - entity: sensor.peblar_ev_charger_active_error_1
-                name: Error 1
-              - entity: sensor.peblar_ev_charger_active_error_2
-                name: Error 2
-              - entity: sensor.peblar_ev_charger_active_error_3
-                name: Error 3
-              - entity: sensor.peblar_ev_charger_active_error_4
-                name: Error 4
-              - entity: sensor.peblar_ev_charger_active_error_5
-                name: Error 5
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_error_1
+                  name: Error 1
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_error_2
+                  name: Error 2
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_error_3
+                  name: Error 3
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_error_4
+                  name: Error 4
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_error_5
+                  name: Error 5
               - type: divider
-              - entity: sensor.peblar_ev_charger_active_warning_1
-                name: Warning 1
-              - entity: sensor.peblar_ev_charger_active_warning_2
-                name: Warning 2
-              - entity: sensor.peblar_ev_charger_active_warning_3
-                name: Warning 3
-              - entity: sensor.peblar_ev_charger_active_warning_4
-                name: Warning 4
-              - entity: sensor.peblar_ev_charger_active_warning_5
-                name: Warning 5
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_warning_1
+                  name: Warning 1
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_warning_2
+                  name: Warning 2
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_warning_3
+                  name: Warning 3
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_warning_4
+                  name: Warning 4
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                row:
+                  entity: sensor.peblar_ev_charger_active_warning_5
+                  name: Warning 5
           - type: entities
             title: Modbus controls
             entities:
@@ -789,9 +836,14 @@ views:
           - type: entities
             title: Connectivity
             entities:
-              - entity: sensor.peblar_ev_charger_wlan_signal_strength
-                name: WLAN signal
+              - type: conditional
+                conditions:
+                  - entity: sensor.peblar_ev_charger_wlan_signal_strength
+                    state_not: "-1000"
+                row:
+                  entity: sensor.peblar_ev_charger_wlan_signal_strength
+                  name: WLAN signal
               - entity: sensor.peblar_ev_charger_cellular_signal_strength
                 name: Cellular signal
               - entity: sensor.peblar_ev_charger_uptime
-                name: Uptime (s)
+                name: Up since

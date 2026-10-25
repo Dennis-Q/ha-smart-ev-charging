@@ -35,10 +35,20 @@ All notable changes to this project will be documented here.
   exact commit — by branch name, raw.githubusercontent.com caches files for a few minutes, so one
   run could mix two commits. Release tags are shown as before.
 
+### Fixed
+- **Entity fields that were never filled in no longer show `unknown`** — automation
+  `ev_clear_unknown_entity_fields` sets them to empty at start (the logic already treated both the
+  same; the dashboard looked broken, e.g. *Price entity* `unknown` while prices were loaded).
+
 ### Added (preview)
 - **Preview dashboard** `dashboard_preview.yaml` → `lovelace/ev_dashboard_preview.yaml` (installer).
   Dashboard improvements from the 2026-10-25 review land there first; shown once registered under
   `lovelace: dashboards:` (e.g. `ev-preview`, `filename: lovelace/ev_dashboard_preview.yaml`).
+  Done there so far: no header toggles on the settings / charge-control cards (one tap switched force
+  charge, override, charger and car together), Window Charging as a readable table (yes/no, "Mon
+  03:00" instead of true/false and raw timestamps), clear price names (Frank all-in / market,
+  ENTSO-E), price source as text, English Frank chart title, Peblar: "Up since", WLAN hidden when
+  not used, error/warning rows only when active.
 
 ## [0.2.17] – 2026-10-14
 

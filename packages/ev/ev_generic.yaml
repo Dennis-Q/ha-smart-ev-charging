@@ -349,6 +349,39 @@ template:
 ## Automations
 
 automation:
+  # Optional entity-ID fields that were never filled in show their state as "unknown" (the
+  # dashboard then says `unknown`, as if something is broken — dashboard review 2026-10-25).
+  # Set them to empty at start; every reader already treats unknown and empty the same.
+  - id: ev_clear_unknown_entity_fields
+    alias: "EV: Clear never-set entity fields"
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: call_service
+        event_data: { domain: input_text, service: reload }
+    actions:
+      - delay: { seconds: 5 }
+      - repeat:
+          for_each:
+            - input_text.ev_notify_entity_id
+            - input_text.ev_price_entity
+            - input_text.ev_solar_power_entity_1
+            - input_text.ev_solar_power_entity_2
+            - input_text.ev_home_battery_power_entity
+            - input_text.ev_home_battery_assist_active_entity
+            - input_text.ev_home_battery_priority_entity
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ states(repeat.item) in ['unknown', 'unavailable'] }}"
+              then:
+                - action: input_text.set_value
+                  continue_on_error: true
+                  target: { entity_id: "{{ repeat.item }}" }
+                  data: { value: "" }
+
   - id: "ev_force_charge_set_timeout"
     alias: "EV Force Charge - Set 8 Hour Timeout"
     description: "Set timeout when force charge activated"
