@@ -480,6 +480,8 @@ views:
                 name: Home battery power entity
               - entity: input_text.ev_home_battery_assist_active_entity
                 name: Battery assist active entity
+              - entity: input_text.ev_home_battery_priority_entity
+                name: Home battery priority entity
               - type: divider
               - entity: binary_sensor.ev_solar_viable
                 name: Solar viable (status)

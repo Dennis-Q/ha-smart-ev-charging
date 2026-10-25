@@ -21,6 +21,13 @@ All notable changes to this project will be documented here.
 - **`ev_window_prices_late_notification`** — push + persistent notification when that sensor
   has been on for 5 minutes while window charging with tariff optimisation is on; the
   persistent notification clears once the window is fully priced.
+- **Home battery priority — `input_text.ev_home_battery_priority_entity`.** Optional
+  binary_sensor from the home battery system that is on while the battery should get the solar
+  surplus first. While on, `ev_grid_excess_power` no longer adds the battery's charging power
+  back, so the EV only gets what the battery leaves over. Empty (the default) keeps the old
+  behaviour. HBA: `binary_sensor.hba_batteries_before_ev` (Charge alongside EV, below the
+  *Batteries first* kWh reserve) — without it EV solar mode took the surplus HBA was holding
+  for the batteries.
 
 ## [0.2.17] – 2026-10-14
 

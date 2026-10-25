@@ -59,6 +59,23 @@ and turns it into a sorted list of slots (`slots: [{ts, price}]`, `slots_per_hou
   still missing after 14:00, `binary_sensor.ev_window_prices_late` turns on and you get a
   notification.
 
+## Using with a home battery (HBA)
+
+Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/marstek-venus-rs485-hba)
+(HBA) the two exchange a few entities. Set these under Advanced settings → Power entities:
+
+| EV helper | HBA entity | Effect |
+|---|---|---|
+| `ev_home_battery_power_entity` | `sensor.hba_total_battery_power` | Solar mode counts battery charging as surplus for the car; battery discharge (e.g. selling) never counts as solar |
+| `ev_home_battery_assist_active_entity` | `binary_sensor.hba_battery_assist_active` | HBA *Timed EV charge*: the car charges from the batteries (battery_assist mode) |
+| `ev_home_battery_priority_entity` | `binary_sensor.hba_batteries_before_ev` | HBA *Charge alongside EV* below its *Batteries first* reserve: the batteries get the solar surplus first, the car what is left |
+
+In the other direction HBA reads `binary_sensor.ev_is_charging` and
+`binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). For HBA's per-phase
+limits you can define `sensor.ev_charger_power` (or `_l1`..`_l3`) in HBA's `hba_config.yaml` from
+`sensor.peblar_ev_charger_power` / the Peblar per-phase Modbus sensors. The Peblar's own load
+balancing keeps protecting the grid connection; HBA's main fuse limit only limits the batteries.
+
 ## Installation
 
 Run this from your Home Assistant `/config` directory (e.g. via the SSH add-on):

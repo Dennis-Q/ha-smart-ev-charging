@@ -71,6 +71,19 @@ input_text:
     icon: mdi:battery-arrow-up
     max: 100
 
+  # ev_home_battery_priority_entity
+  #   A binary_sensor published by your home battery system that is 'on'
+  #   while the home battery should get the solar surplus before the EV
+  #   (e.g. it is below a reserve it wants filled first). While 'on',
+  #   ev_grid_excess_power no longer adds the battery's charging power back,
+  #   so the EV only gets what the battery leaves over. Leave empty to always
+  #   add it back (EV first).
+  #   Example (HBA): binary_sensor.hba_batteries_before_ev
+  ev_home_battery_priority_entity:
+    name: "EV Home battery priority entity"
+    icon: mdi:home-battery-outline
+    max: 100
+
 ## Templates & sensors
 
 sensor:
@@ -91,7 +104,8 @@ template:
       # Home battery handling (when ev_home_battery_power_entity is set;
       # convention: positive = discharging, negative = charging):
       #   - the charging component is added back, so surplus the battery
-      #     absorbs stays visible to the EV charger
+      #     absorbs stays visible to the EV charger — except while the
+      #     ev_home_battery_priority_entity is 'on' (the battery comes first)
       #   - the discharging component is subtracted in every mode except
       #     battery_assist, so battery power flowing to the grid (e.g. the
       #     battery system selling at expensive hours) is never mistaken for
@@ -120,7 +134,9 @@ template:
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
           {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
-          {% set batt_charge = [-(batt_power), 0] | max %}
+          {% set prio_e = states('input_text.ev_home_battery_priority_entity') | trim %}
+          {% set batt_first = prio_e not in ['', 'unknown', 'unavailable', 'none'] and is_state(prio_e, 'on') %}
+          {% set batt_charge = 0 if batt_first else [-(batt_power), 0] | max %}
           {% set batt_discharge = 0 if is_state('sensor.ev_charging_mode', 'battery_assist') else [batt_power, 0] | max %}
           {% set current_power = grid_export - grid_import %}
           {% set excess = current_power + charger_power + batt_charge - batt_discharge - buffer %}
