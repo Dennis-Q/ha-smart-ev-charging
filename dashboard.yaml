@@ -516,6 +516,14 @@ views:
               charging. Requires **EV Battery Assist Charging** (main
               settings) to also be enabled.
               Example: `binary_sensor.hba_battery_assist_active`
+
+              **Home battery priority entity**: Binary sensor published by
+              your home battery system that is on while the battery should get
+              the solar surplus before the EV (e.g. below a reserve it wants
+              filled first). While on, the battery's charging power is no
+              longer added back, so the EV only gets what the battery leaves
+              over. Leave empty to always let the EV go first.
+              Example: `binary_sensor.hba_batteries_before_ev`
       - type: entities
         title: Reset
         entities:
