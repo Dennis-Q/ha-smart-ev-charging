@@ -571,6 +571,9 @@ script:
         default: blue
       priority:
         default: normal
+      actions:
+        description: Optional mobile-app action buttons [{action, title}]
+        default: []
     sequence:
       - action: >-
           {{ states('input_text.ev_notify_entity_id')
@@ -580,10 +583,9 @@ script:
         data:
           title: "{{ title }}"
           message: "{{ message }}"
-          data:
-            priority: "{{ priority }}"
-            tag: "{{ tag }}"
-            color: "{{ color }}"
+          data: >-
+            {% set d = {'priority': priority, 'tag': tag, 'color': color} %}
+            {{ dict(d, actions=actions) if actions else d }}
 
   ev_notify_test:
     alias: "EV: Send test notification"

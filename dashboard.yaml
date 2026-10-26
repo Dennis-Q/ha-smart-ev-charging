@@ -132,12 +132,12 @@ views:
           # car SoC entity is empty or does not exist.
           - type: markdown
             content: >-
-              <ha-alert alert-type="error"><strong>Car SoC entity not set</strong><br>
+              <ha-alert alert-type="error"><strong>Car SoC entity not set</strong> ({{ states('sensor.ev_active_car') }})<br>
               Hours needed for window charging, "force once until full" and the
               charge-complete notification need the car's battery level.
               {% set e = state_attr('binary_sensor.ev_car_setup_missing', 'soc_entity') %}
               {% if e %}<br>Entity <strong>{{ e }}</strong> does not exist.{% endif %}
-              <br><br>Set it under <strong>Advanced settings → Car entities</strong>.</ha-alert>
+              <br><br>Set it under <strong>Cars</strong>.</ha-alert>
             visibility:
               - condition: state
                 entity: binary_sensor.ev_car_setup_missing
@@ -181,6 +181,18 @@ views:
                 entity: binary_sensor.ev_p1_unit_mismatch
                 state: "on"
       - type: entities
+        title: Car
+        show_header_toggle: false
+        visibility:
+          - condition: state
+            entity: binary_sensor.ev_multiple_cars
+            state: "on"
+        entities:
+          - entity: input_select.ev_active_car
+            name: Car on the charger
+          - entity: sensor.ev_car_soc
+            name: Battery level
+      - type: entities
         title: EV Charging Settings
         entities:
           - entity: input_boolean.ev_manual_override
@@ -207,8 +219,6 @@ views:
           - entity: input_datetime.ev_force_charge_timeout
             name: Force Charge Timeout At
           - type: divider
-          - entity: input_number.ev_battery_capacity_kwh
-            name: Battery Capacity (kWh)
           - entity: input_number.ev_charger_max_power_kw
             name: Charger Maximum Power (kW)
           - entity: input_number.ev_charging_efficiency_percent
@@ -382,6 +392,157 @@ views:
             attribute: excess
           - entity: sensor.ev_charging_debug_info
             name: EV charging debug info
+  - title: Cars
+    path: cars
+    icon: mdi:car-multiple
+    cards:
+      - type: entities
+        title: Active car
+        show_header_toggle: false
+        entities:
+          - type: conditional
+            conditions:
+              - entity: binary_sensor.ev_multiple_cars
+                state: "on"
+            row:
+              entity: input_select.ev_active_car
+              name: Car on the charger
+          - entity: sensor.ev_active_car
+            name: Active car
+          - entity: sensor.ev_car_soc
+            name: Battery level
+          - entity: sensor.ev_car_target_soc
+            name: Car's own limit
+          - entity: sensor.ev_car_battery_capacity
+            name: Battery capacity
+          - entity: sensor.ev_car_max_power
+            name: Max power (car and charger)
+          - entity: binary_sensor.ev_car_single_phase
+            name: Charges on 1 phase
+          - entity: binary_sensor.ev_car_setup_missing
+            name: Setup missing
+          - type: divider
+          - entity: input_number.ev_charger_max_power_kw
+            name: Charger maximum power (kW)
+      - type: entities
+        title: Car 1
+        show_header_toggle: false
+        entities:
+              - entity: input_text.ev_car1_name
+                name: Name
+              - entity: input_number.ev_car1_battery_capacity_kwh
+                name: Battery capacity
+              - entity: input_number.ev_car1_max_power_kw
+                name: Max charge power
+              - entity: input_boolean.ev_car1_single_phase
+                name: Charges on 1 phase
+              - type: divider
+              - entity: input_text.ev_car1_soc_entity
+                name: SoC sensor (required)
+              - entity: input_text.ev_car1_charge_limit_entity
+                name: Charge limit number
+              - entity: input_text.ev_car1_start_entity
+                name: Start charging (switch or button)
+              - entity: input_text.ev_car1_connected_entity
+                name: Connected sensor
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Car 2
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.ev_car2_enabled
+                name: Enabled
+          - type: entities
+            show_header_toggle: false
+            visibility:
+              - condition: state
+                entity: input_boolean.ev_car2_enabled
+                state: "on"
+            entities:
+                - entity: input_text.ev_car2_name
+                  name: Name
+                - entity: input_number.ev_car2_battery_capacity_kwh
+                  name: Battery capacity
+                - entity: input_number.ev_car2_max_power_kw
+                  name: Max charge power
+                - entity: input_boolean.ev_car2_single_phase
+                  name: Charges on 1 phase
+                - type: divider
+                - entity: input_text.ev_car2_soc_entity
+                  name: SoC sensor (empty = guest)
+                - entity: input_text.ev_car2_charge_limit_entity
+                  name: Charge limit number
+                - entity: input_text.ev_car2_start_entity
+                  name: Start charging (switch or button)
+                - entity: input_text.ev_car2_connected_entity
+                  name: Connected sensor
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Car 3
+            show_header_toggle: false
+            entities:
+              - entity: input_boolean.ev_car3_enabled
+                name: Enabled
+          - type: entities
+            show_header_toggle: false
+            visibility:
+              - condition: state
+                entity: input_boolean.ev_car3_enabled
+                state: "on"
+            entities:
+                - entity: input_text.ev_car3_name
+                  name: Name
+                - entity: input_number.ev_car3_battery_capacity_kwh
+                  name: Battery capacity
+                - entity: input_number.ev_car3_max_power_kw
+                  name: Max charge power
+                - entity: input_boolean.ev_car3_single_phase
+                  name: Charges on 1 phase
+                - type: divider
+                - entity: input_text.ev_car3_soc_entity
+                  name: SoC sensor (empty = guest)
+                - entity: input_text.ev_car3_charge_limit_entity
+                  name: Charge limit number
+                - entity: input_text.ev_car3_start_entity
+                  name: Start charging (switch or button)
+                - entity: input_text.ev_car3_connected_entity
+                  name: Connected sensor
+      - type: markdown
+        content: >-
+          Fill in the entities of each car's integration. **Car 1** is your own car
+          and always on; switch on car 2 / 3 for more cars. With more than one car,
+          the main view gets a car selector and plugging in asks **"which car?"**
+          (no answer = the current car stays).
+
+          **SoC sensor**: battery level in %. Required for car 1. Car 2/3 without
+          it is a **guest**: no car control at all, the charger is steered alone —
+          cheapest charging uses the whole window, force charging runs until the car
+          stops, the cable comes out or 8 h pass. Picking a guest in the plug-in
+          notification also starts a force charge; when a guest unplugs, the last
+          own car becomes active again.
+
+          **Charge limit number**: the car's own charge limit; read, and set to the
+          limit of the active mode (rounded and clamped to what the number accepts).
+          Empty = the car keeps its own limit.
+
+          **Start charging**: a switch (turned on) or button (pressed) when force
+          charging starts. **Connected sensor**: the car's own "plugged in";
+          re-checks the limit when the car reports in.
+
+          **Charges on 1 phase**: for a car that only uses charger phase 1 (e.g.
+          Dacia Spring) — the charger then stays single-phase in every mode, so solar
+          gets the whole surplus on that phase.
+
+          | | MySkoda (Elroq) | Renault (Spring) |
+          |---|---|---|
+          | SoC | `sensor.skoda_elroq_battery_percentage` | `sensor.<car>_battery` |
+          | Limit | `number.skoda_elroq_charge_limit` | `number.<car>_target_charge_level` |
+          | Start | `switch.skoda_elroq_charging` | `button.<car>_start_charge` |
+          | Connected | `binary_sensor.skoda_elroq_charger_connected` | `binary_sensor.<car>_plug` |
+
+          A MySkoda car is filled in as car 1 automatically while its SoC field is empty.
   - title: Advanced settings
     path: advanced-settings
     icon: mdi:tune
@@ -544,54 +705,6 @@ views:
               longer added back, so the EV only gets what the battery leaves
               over. Leave empty to always let the EV go first.
               Example: `binary_sensor.hba_batteries_before_ev`
-      - type: vertical-stack
-        cards:
-          - type: entities
-            title: Car entities
-            show_header_toggle: false
-            entities:
-              - entity: input_text.ev_car_soc_entity
-                name: SoC sensor (required)
-              - entity: input_text.ev_car_target_soc_entity
-                name: Target SoC sensor
-              - entity: input_text.ev_car_charge_limit_entity
-                name: Charge limit number
-              - entity: input_text.ev_car_charging_switch_entity
-                name: Charging switch
-              - entity: input_text.ev_car_connected_entity
-                name: Connected sensor
-              - type: divider
-              - entity: sensor.ev_car_soc
-                name: Car SoC (status)
-              - entity: sensor.ev_car_target_soc
-                name: Car target SoC (status)
-              - entity: binary_sensor.ev_car_setup_missing
-                name: Setup missing (status)
-          - type: markdown
-            content: >-
-              Entities of your car's integration. Only the **SoC sensor** is
-              required; leave the others empty if your car has no such entity.
-              With a MySkoda car these are filled in automatically while the
-              SoC field is empty.
-
-              **SoC sensor**: battery level in %.
-              Example: `sensor.skoda_elroq_battery_percentage`
-
-              **Target SoC sensor**: the car's own charge limit in %. Empty ⇒
-              the state of the charge limit number is used.
-              Example: `sensor.skoda_elroq_target_battery_percentage`
-
-              **Charge limit number**: sets the car's charge limit. The project
-              keeps it at the limit of the active mode. Empty ⇒ the car's own
-              limit applies. Example: `number.skoda_elroq_charge_limit`
-
-              **Charging switch**: turned on when force charging starts.
-              Example: `switch.skoda_elroq_charging`
-
-              **Connected sensor**: the car's own "cable plugged in"; re-checks
-              the charge limit when the car reports in. Plug-in itself is
-              taken from the charger.
-              Example: `binary_sensor.skoda_elroq_charger_connected`
       - type: entities
         title: Reset
         entities:

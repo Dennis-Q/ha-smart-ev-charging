@@ -355,8 +355,9 @@ template:
         state: >
           {% set current_battery = states('sensor.ev_car_soc') | float(0) %}
           {% set target_battery = states('input_number.ev_charging_limit_window') | float(0) %}
-          {% set battery_capacity = states('input_number.ev_battery_capacity_kwh') | float(82) %}
-          {% set charger_power = states('input_number.ev_charger_max_power_kw') | float(11) %}
+          {% set battery_capacity = states('sensor.ev_car_battery_capacity') | float(60) %}
+          {# the lower of the active car's and the charger's max power #}
+          {% set charger_power = states('sensor.ev_car_max_power') | float(11) %}
           {% set efficiency = states('input_number.ev_charging_efficiency_percent') | float(90) / 100 %}
           {% set battery_percentage_needed = target_battery - current_battery %}
           {% set kwh_needed = (battery_capacity * battery_percentage_needed / 100) %}
@@ -370,7 +371,7 @@ template:
         attributes:
           current_battery_percent: "{{ states('sensor.ev_car_soc') | float(0) | round(1) }}"
           target_battery_percent: "{{ states('input_number.ev_charging_limit_window') | float(0) | round(1) }}"
-          battery_capacity_kwh: "{{ states('input_number.ev_battery_capacity_kwh') | float(0) | round(1) }}"
+          battery_capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) | round(1) }}"
           
       # 4) Latest start time (window_end - hours_needed)
       - name: EV Window Latest Start Time

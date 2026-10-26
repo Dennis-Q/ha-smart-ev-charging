@@ -229,6 +229,7 @@ CORE_FILES=(
     packages/ev/ev_generic.yaml
     packages/ev/ev_notifications.yaml
     packages/ev/ev_solar.yaml
+    packages/ev/ev_vehicles.yaml
     packages/ev/ev_window.yaml
 )
 

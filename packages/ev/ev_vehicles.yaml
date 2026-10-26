@@ -1,0 +1,716 @@
+### Cars — three car slots and the active car
+#
+# Every slot holds the entities of one car's integration plus its battery
+# capacity, max charge power and phases. The rest of the project never reads a
+# car integration directly: it reads the active car through
+#   sensor.ev_active_car            name; attributes slot, guest, entity fields
+#   sensor.ev_car_soc               battery level %       (unavailable without SoC entity)
+#   sensor.ev_car_target_soc        the car's own limit % (state of its charge-limit number)
+#   sensor.ev_car_expected_limit    expected limit rounded/clamped to that number's min/max/step
+#   sensor.ev_car_battery_capacity  kWh
+#   sensor.ev_car_max_power         kW, the lower of car and charger
+#   binary_sensor.ev_car_single_phase / ev_car_reports_connected / ev_car_setup_missing
+#   binary_sensor.ev_multiple_cars  more than one slot enabled
+#
+# Slot 1 is always enabled (your own car). Slots 2 and 3 are off by default;
+# slot 3 starts as "Guest". Slot 2 or 3 without a SoC entity is a guest: no car
+# control at all — the project only steers the charger (no hours needed, so
+# cheapest becomes the whole window; force runs until the car stops, the cable
+# comes out or 8 h pass).
+#
+# Choosing the car is manual: input_select.ev_active_car (main view, only with
+# more than one slot) and a "Which car?" notification at plug-in. Choosing a
+# guest there also starts a one-time force charge. When a guest unplugs, the
+# last own car becomes active again. A phase check asks — never switches — when
+# a 1-phase car seems to charge while a 3-phase car is selected.
+# Multi-car design and the 1-phase handling with Mik3yZ (github.com/Mik3yZ).
+
+input_boolean:
+  ev_car2_enabled:
+    name: "EV Car 2 enabled"
+    icon: mdi:car-2-plus
+  ev_car3_enabled:
+    name: "EV Car 3 enabled"
+    icon: mdi:car-3-plus
+  # On: the car charges on one phase only (e.g. Dacia Spring, charger L1). The
+  # charger then stays forced to single-phase in every mode, so solar gets the
+  # whole surplus on that phase instead of a third of it.
+  ev_car1_single_phase:
+    name: "EV Car 1 charges on 1 phase"
+    icon: mdi:sine-wave
+  ev_car2_single_phase:
+    name: "EV Car 2 charges on 1 phase"
+    icon: mdi:sine-wave
+  ev_car3_single_phase:
+    name: "EV Car 3 charges on 1 phase"
+    icon: mdi:sine-wave
+
+input_number:
+  # Internal: the active slot. input_select.ev_active_car is only its face —
+  # its options are the car names, which YAML cannot list, so it cannot restore
+  # a name across a restart; this number can.
+  ev_active_car_slot:
+    name: "EV Active car slot"
+    min: 1
+    max: 3
+    step: 1
+    mode: box
+    icon: mdi:numeric
+  ev_car1_battery_capacity_kwh:
+    name: "EV Car 1 battery capacity"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    mode: box
+    icon: mdi:battery-high
+  ev_car2_battery_capacity_kwh:
+    name: "EV Car 2 battery capacity"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    mode: box
+    icon: mdi:battery-high
+  ev_car3_battery_capacity_kwh:
+    name: "EV Car 3 battery capacity"
+    unit_of_measurement: "kWh"
+    min: 10
+    max: 150
+    step: 0.1
+    mode: box
+    icon: mdi:battery-high
+  ev_car1_max_power_kw:
+    name: "EV Car 1 max charge power"
+    unit_of_measurement: "kW"
+    min: 1.4
+    max: 22
+    step: 0.1
+    mode: box
+    icon: mdi:lightning-bolt-circle
+  ev_car2_max_power_kw:
+    name: "EV Car 2 max charge power"
+    unit_of_measurement: "kW"
+    min: 1.4
+    max: 22
+    step: 0.1
+    mode: box
+    icon: mdi:lightning-bolt-circle
+  ev_car3_max_power_kw:
+    name: "EV Car 3 max charge power"
+    unit_of_measurement: "kW"
+    min: 1.4
+    max: 22
+    step: 0.1
+    mode: box
+    icon: mdi:lightning-bolt-circle
+
+input_text:
+  # Per slot (n = 1..3), all optional except the SoC entity of an own car:
+  #   ev_carN_name                 shown in the car selector and notifications
+  #   ev_carN_soc_entity           sensor, battery level %   e.g. sensor.skoda_elroq_battery_percentage
+  #                                empty ⇒ guest (no car control)
+  #   ev_carN_charge_limit_entity  number, the car's own charge limit %, read and set
+  #                                e.g. number.skoda_elroq_charge_limit / number.<car>_target_charge_level
+  #                                empty ⇒ the car keeps its own limit
+  #   ev_carN_start_entity         switch (turned on) or button (pressed) when force charging starts
+  #                                e.g. switch.skoda_elroq_charging / button.<car>_start_charge
+  #   ev_carN_connected_entity     binary_sensor, the car reports the cable plugged in; only
+  #                                re-checks the limit when the car reports in
+  #                                e.g. binary_sensor.skoda_elroq_charger_connected / binary_sensor.<car>_plug
+  ev_car1_name:
+    name: "EV Car 1 name"
+    icon: mdi:car-info
+    max: 30
+  ev_car2_name:
+    name: "EV Car 2 name"
+    icon: mdi:car-info
+    max: 30
+  ev_car3_name:
+    name: "EV Car 3 name"
+    icon: mdi:car-info
+    max: 30
+  ev_car1_soc_entity:
+    name: "EV Car 1 SoC entity"
+    icon: mdi:battery-50
+    max: 100
+  ev_car2_soc_entity:
+    name: "EV Car 2 SoC entity"
+    icon: mdi:battery-50
+    max: 100
+  ev_car3_soc_entity:
+    name: "EV Car 3 SoC entity"
+    icon: mdi:battery-50
+    max: 100
+  ev_car1_charge_limit_entity:
+    name: "EV Car 1 charge limit entity"
+    icon: mdi:battery-lock
+    max: 100
+  ev_car2_charge_limit_entity:
+    name: "EV Car 2 charge limit entity"
+    icon: mdi:battery-lock
+    max: 100
+  ev_car3_charge_limit_entity:
+    name: "EV Car 3 charge limit entity"
+    icon: mdi:battery-lock
+    max: 100
+  ev_car1_start_entity:
+    name: "EV Car 1 start charging entity"
+    icon: mdi:car-electric
+    max: 100
+  ev_car2_start_entity:
+    name: "EV Car 2 start charging entity"
+    icon: mdi:car-electric
+    max: 100
+  ev_car3_start_entity:
+    name: "EV Car 3 start charging entity"
+    icon: mdi:car-electric
+    max: 100
+  ev_car1_connected_entity:
+    name: "EV Car 1 connected entity"
+    icon: mdi:ev-plug-type2
+    max: 100
+  ev_car2_connected_entity:
+    name: "EV Car 2 connected entity"
+    icon: mdi:ev-plug-type2
+    max: 100
+  ev_car3_connected_entity:
+    name: "EV Car 3 connected entity"
+    icon: mdi:ev-plug-type2
+    max: 100
+
+input_select:
+  # Options are the names of the enabled slots, kept in sync by ev_active_car_sync.
+  ev_active_car:
+    name: "EV Active car"
+    icon: mdi:car-select
+    options:
+      - "Car 1"
+
+## Scripts
+
+script:
+  # Make a slot the active car. Everything automated selects a car through this
+  # (the input_select follows via ev_active_car_sync).
+  ev_select_car:
+    alias: "EV: Select car"
+    mode: queued
+    fields:
+      slot:
+        description: Car slot 1-3
+        example: 2
+    sequence:
+      - action: input_number.set_value
+        target: { entity_id: input_number.ev_active_car_slot }
+        data: { value: "{{ slot | int(1) }}" }
+
+  # Write a limit to the active car's charge-limit number, rounded and clamped
+  # to what that number accepts (the Renault number: 55-100 in steps of 5 — a
+  # value outside that fails, and the limit check would retry it forever).
+  ev_set_car_charge_limit:
+    alias: "EV: Set car charge limit"
+    mode: queued
+    fields:
+      limit:
+        description: Charge limit in %
+        example: 80
+    sequence:
+      - variables:
+          e: "{{ state_attr('sensor.ev_active_car', 'charge_limit_entity') or '' }}"
+      - condition: template
+        value_template: "{{ e != '' and states(e) not in ['unknown', 'unavailable'] }}"
+      - action: number.set_value
+        target: { entity_id: "{{ e }}" }
+        data:
+          value: >-
+            {% set mn = state_attr(e, 'min') | float(0) %}
+            {% set mx = state_attr(e, 'max') | float(100) %}
+            {% set st = state_attr(e, 'step') | float(1) %}
+            {% set st = st if st > 0 else 1 %}
+            {% set v = ((limit | float(mx) - mn) / st) | round(0) * st + mn %}
+            {{ ([[v, mn] | max, mx] | min) | round(0) | int }}
+
+  # Ask the car to start charging (force start): a switch is turned on, a
+  # button is pressed. No-op without a start entity.
+  ev_car_start_charging:
+    alias: "EV: Car start charging"
+    sequence:
+      - variables:
+          e: "{{ state_attr('sensor.ev_active_car', 'start_entity') or '' }}"
+      - choose:
+          - conditions: "{{ e.startswith('switch.') }}"
+            sequence:
+              - action: switch.turn_on
+                target: { entity_id: "{{ e }}" }
+          - conditions: "{{ e.startswith('button.') }}"
+            sequence:
+              - action: button.press
+                target: { entity_id: "{{ e }}" }
+
+## Templates & sensors
+
+template:
+  - sensor:
+      - name: "EV Active Car"
+        unique_id: ev_active_car
+        icon: mdi:car-electric
+        state: >-
+          {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+          {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+          {% set name = states('input_text.ev_car' ~ n ~ '_name') | trim %}
+          {{ name if name not in ['', 'unknown', 'unavailable'] else 'Car ' ~ n }}
+        attributes:
+          slot: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {{ want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 }}
+          # Names of the enabled slots, in slot order — the selector's options
+          cars: >-
+            {% set ns = namespace(cars=[]) %}
+            {% for n in [1, 2, 3] if n == 1 or is_state('input_boolean.ev_car' ~ n ~ '_enabled', 'on') %}
+              {% set name = states('input_text.ev_car' ~ n ~ '_name') | trim %}
+              {% set name = name if name not in ['', 'unknown', 'unavailable'] else 'Car ' ~ n %}
+              {% set name = name if name not in ns.cars | map(attribute='name') | list else name ~ ' (' ~ n ~ ')' %}
+              {% set ns.cars = ns.cars + [{'slot': n, 'name': name}] %}
+            {% endfor %}
+            {{ ns.cars }}
+          guest: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+            {{ n != 1 and states('input_text.ev_car' ~ n ~ '_soc_entity') | trim in ['', 'unknown', 'unavailable'] }}
+          soc_entity: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+            {% set v = states('input_text.ev_car' ~ n ~ '_soc_entity') | trim %}
+            {{ v if v not in ['unknown', 'unavailable'] else '' }}
+          charge_limit_entity: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+            {% set v = states('input_text.ev_car' ~ n ~ '_charge_limit_entity') | trim %}
+            {{ v if v not in ['unknown', 'unavailable'] else '' }}
+          start_entity: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+            {% set v = states('input_text.ev_car' ~ n ~ '_start_entity') | trim %}
+            {{ v if v not in ['unknown', 'unavailable'] else '' }}
+          connected_entity: >-
+            {% set want = states('input_number.ev_active_car_slot') | int(1) %}
+            {% set n = want if want == 1 or is_state('input_boolean.ev_car' ~ want ~ '_enabled', 'on') else 1 %}
+            {% set v = states('input_text.ev_car' ~ n ~ '_connected_entity') | trim %}
+            {{ v if v not in ['unknown', 'unavailable'] else '' }}
+
+      - name: "EV Car SoC"
+        unique_id: ev_car_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        availability: >-
+          {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+          {{ e != '' and states(e) | is_number }}
+        state: "{{ states(state_attr('sensor.ev_active_car', 'soc_entity')) }}"
+
+      # The car's own charge limit = the state of its charge-limit number
+      - name: "EV Car Target SoC"
+        unique_id: ev_car_target_soc
+        unit_of_measurement: "%"
+        availability: >-
+          {% set e = state_attr('sensor.ev_active_car', 'charge_limit_entity') or '' %}
+          {{ e != '' and states(e) | is_number }}
+        state: "{{ states(state_attr('sensor.ev_active_car', 'charge_limit_entity')) | float | round(0) | int }}"
+
+      # sensor.ev_expected_charging_limit as the car's number can take it
+      # (same rounding/clamping as script.ev_set_car_charge_limit)
+      - name: "EV Car Expected Limit"
+        unique_id: ev_car_expected_limit
+        unit_of_measurement: "%"
+        availability: >-
+          {% set e = state_attr('sensor.ev_active_car', 'charge_limit_entity') or '' %}
+          {{ e != '' and states('sensor.ev_expected_charging_limit') | is_number }}
+        state: >-
+          {% set e = state_attr('sensor.ev_active_car', 'charge_limit_entity') %}
+          {% set mn = state_attr(e, 'min') | float(0) %}
+          {% set mx = state_attr(e, 'max') | float(100) %}
+          {% set st = state_attr(e, 'step') | float(1) %}
+          {% set st = st if st > 0 else 1 %}
+          {% set v = ((states('sensor.ev_expected_charging_limit') | float - mn) / st) | round(0) * st + mn %}
+          {{ ([[v, mn] | max, mx] | min) | round(0) | int }}
+
+      - name: "EV Car Battery Capacity"
+        unique_id: ev_car_battery_capacity
+        unit_of_measurement: "kWh"
+        icon: mdi:battery-high
+        state: >-
+          {{ states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_battery_capacity_kwh') | float(60) }}
+
+      - name: "EV Car Max Power"
+        unique_id: ev_car_max_power
+        unit_of_measurement: "kW"
+        icon: mdi:lightning-bolt-circle
+        state: >-
+          {% set car = states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_max_power_kw') | float(11) %}
+          {% set charger = states('input_number.ev_charger_max_power_kw') | float(11) %}
+          {{ [car, charger] | min }}
+
+  # Last own (non-guest) car, to go back to when a guest unplugs. Trigger-based so
+  # it survives a restart without another helper.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.ev_active_car
+    sensor:
+      - name: "EV Last Own Car Slot"
+        unique_id: ev_last_own_car_slot
+        icon: mdi:car-back
+        state: >-
+          {% if state_attr('sensor.ev_active_car', 'guest') in [false, 'false', 'False'] %}
+            {{ state_attr('sensor.ev_active_car', 'slot') | int(1) }}
+          {% else %}
+            {{ this.state if this.state | is_number else 1 }}
+          {% endif %}
+
+  - binary_sensor:
+      - name: "EV Car Single Phase"
+        unique_id: ev_car_single_phase
+        icon: mdi:sine-wave
+        state: "{{ is_state('input_boolean.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_single_phase', 'on') }}"
+
+      - name: "EV Multiple Cars"
+        unique_id: ev_multiple_cars
+        icon: mdi:car-multiple
+        state: "{{ is_state('input_boolean.ev_car2_enabled', 'on') or is_state('input_boolean.ev_car3_enabled', 'on') }}"
+
+      # The car's own "cable plugged in". Only used to re-check the car's charge
+      # limit once the car API wakes up; plug-in itself comes from the charger.
+      - name: "EV Car Reports Connected"
+        unique_id: ev_car_reports_connected
+        availability: >-
+          {% set e = state_attr('sensor.ev_active_car', 'connected_entity') or '' %}
+          {{ e != '' and states(e) not in ['unknown', 'unavailable'] }}
+        state: "{{ is_state(state_attr('sensor.ev_active_car', 'connected_entity'), 'on') }}"
+
+      # 'on' when the active car's SoC entity is set but does not exist, or when
+      # car 1 (your own car) has none — hours needed, force once until full and
+      # the charge-complete notification need it. Car 2/3 without a SoC entity
+      # are guests: no banner. Shown as a setup banner on the dashboard.
+      - name: "EV Car Setup Missing"
+        unique_id: ev_car_setup_missing
+        device_class: problem
+        state: >-
+          {% set n = state_attr('sensor.ev_active_car', 'slot') | int(1) %}
+          {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+          {{ (e == '' and n == 1) or (e != '' and ('.' not in e or states[e] is none)) }}
+        attributes:
+          slot: "{{ state_attr('sensor.ev_active_car', 'slot') }}"
+          soc_entity: "{{ state_attr('sensor.ev_active_car', 'soc_entity') }}"
+
+## Automations
+
+automation:
+  # At start (and on input_text reload): empty never-set fields, give the slots
+  # names and sensible numbers, and fill car 1 with a MySkoda car
+  # (sensor.skoda_<car>_battery_percentage) while its SoC field is empty — a
+  # fresh install, or the upgrade from the hard-wired Skoda entities. Only
+  # fields whose entity exists are filled; once the SoC field is set this never
+  # touches car 1's fields again.
+  - id: ev_car_slots_setup
+    alias: "EV: Car slots setup"
+    mode: single
+    max_exceeded: silent # an input_text reload during the MySkoda wait
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: call_service
+        event_data: { domain: input_text, service: reload }
+    actions:
+      - delay: { seconds: 5 }
+      - repeat:
+          for_each: >-
+            {% set ns = namespace(l=[]) %}
+            {% for n in [1, 2, 3] %}
+              {% for f in ['name', 'soc_entity', 'charge_limit_entity', 'start_entity', 'connected_entity'] %}
+                {% set ns.l = ns.l + ['input_text.ev_car' ~ n ~ '_' ~ f] %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.l }}
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ states(repeat.item) in ['unknown', 'unavailable'] }}"
+              then:
+                - action: input_text.set_value
+                  continue_on_error: true
+                  target: { entity_id: "{{ repeat.item }}" }
+                  data: { value: "" }
+      # Numbers still at their minimum were never set: Elroq-like defaults
+      - repeat:
+          for_each: [1, 2, 3]
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ states('input_number.ev_car' ~ repeat.item ~ '_battery_capacity_kwh') | float(10) <= 10 }}"
+              then:
+                - action: input_number.set_value
+                  target: { entity_id: "input_number.ev_car{{ repeat.item }}_battery_capacity_kwh" }
+                  data: { value: 60 }
+            - if:
+                - condition: template
+                  value_template: "{{ states('input_number.ev_car' ~ repeat.item ~ '_max_power_kw') | float(1.4) <= 1.4 }}"
+              then:
+                - action: input_number.set_value
+                  target: { entity_id: "input_number.ev_car{{ repeat.item }}_max_power_kw" }
+                  data: { value: 11 }
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.ev_car2_name') | trim == '' }}"
+        then:
+          - action: input_text.set_value
+            target: { entity_id: input_text.ev_car2_name }
+            data: { value: "Car 2" }
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.ev_car3_name') | trim == '' }}"
+        then:
+          - action: input_text.set_value
+            target: { entity_id: input_text.ev_car3_name }
+            data: { value: "Guest" }
+      # Car 1 from MySkoda. A cloud integration can come up after us, so wait
+      # up to 5 minutes for it.
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.ev_car1_soc_entity') | trim == '' }}"
+        then:
+          - wait_template: >-
+              {{ states.sensor | selectattr('entity_id', 'match', 'sensor\\.skoda_.+_battery_percentage$') | list | count > 0 }}
+            timeout: "00:05:00"
+          - variables:
+              skoda_soc: >-
+                {{ states.sensor | map(attribute='entity_id')
+                   | select('match', 'sensor\\.skoda_.+_battery_percentage$')
+                   | reject('match', '.*_target_battery_percentage$')
+                   | sort | first | default('') }}
+              car: "{{ skoda_soc | replace('sensor.', '', 1) | replace('_battery_percentage', '') }}"
+          - if:
+              - condition: template
+                value_template: "{{ skoda_soc != '' }}"
+            then:
+              - repeat:
+                  for_each:
+                    - { field: input_text.ev_car1_soc_entity, entity: "sensor.CAR_battery_percentage" }
+                    - { field: input_text.ev_car1_charge_limit_entity, entity: "number.CAR_charge_limit" }
+                    - { field: input_text.ev_car1_start_entity, entity: "switch.CAR_charging" }
+                    - { field: input_text.ev_car1_connected_entity, entity: "binary_sensor.CAR_charger_connected" }
+                  sequence:
+                    - variables:
+                        entity: "{{ repeat.item.entity | replace('CAR', car) }}"
+                    - if:
+                        - condition: template
+                          value_template: "{{ states[entity] is not none }}"
+                      then:
+                        - action: input_text.set_value
+                          continue_on_error: true
+                          target: { entity_id: "{{ repeat.item.field }}" }
+                          data: { value: "{{ entity }}" }
+              - if:
+                  - condition: template
+                    value_template: "{{ states('input_text.ev_car1_name') | trim == '' }}"
+                then:
+                  - action: input_text.set_value
+                    target: { entity_id: input_text.ev_car1_name }
+                    data: { value: "{{ car | replace('_', ' ') | title }}" }
+
+  # Keep the selector's options (enabled car names) and selection in line with
+  # the active slot.
+  - id: ev_active_car_sync
+    alias: "EV: Active car selector sync"
+    mode: restart # bursts of attribute changes: only the last one counts
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: state
+        entity_id: sensor.ev_active_car
+      - trigger: event
+        event_type: call_service
+        event_data: { domain: input_select, service: reload }
+    actions:
+      - delay: { seconds: 1 }
+      - variables:
+          cars: "{{ state_attr('sensor.ev_active_car', 'cars') or [] }}"
+          slot: "{{ state_attr('sensor.ev_active_car', 'slot') | int(1) }}"
+          names: "{{ cars | map(attribute='name') | list }}"
+          active: "{{ (cars | selectattr('slot', 'eq', slot) | map(attribute='name') | first) | default('Car 1') }}"
+      - condition: template
+        value_template: "{{ names | count > 0 }}"
+      - if:
+          - condition: template
+            value_template: "{{ state_attr('input_select.ev_active_car', 'options') != names }}"
+        then:
+          - action: input_select.set_options
+            target: { entity_id: input_select.ev_active_car }
+            data: { options: "{{ names }}" }
+      - if:
+          - condition: template
+            value_template: "{{ states('input_select.ev_active_car') != active }}"
+        then:
+          - action: input_select.select_option
+            target: { entity_id: input_select.ev_active_car }
+            data: { option: "{{ active }}" }
+
+  # A car picked in the selector by a person (not by the sync above, whose
+  # changes carry its context as parent) becomes the active slot.
+  - id: ev_active_car_selected
+    alias: "EV: Active car selected"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_select.ev_active_car
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and trigger.to_state is not none
+             and trigger.to_state.context.parent_id is none }}
+    actions:
+      - variables:
+          picked: >-
+            {{ (state_attr('sensor.ev_active_car', 'cars') or [])
+               | selectattr('name', 'eq', trigger.to_state.state)
+               | map(attribute='slot') | first | default(0) }}
+      - condition: template
+        value_template: "{{ picked | int(0) > 0 }}"
+      - action: script.ev_select_car
+        data: { slot: "{{ picked }}" }
+
+  # "Which car?" at plug-in, only with more than one slot. No answer = the
+  # current car stays active.
+  - id: ev_car_plug_in_question
+    alias: "EV: Which car? at plug-in"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.ev_multiple_cars
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.ev_notifications_enabled
+        state: "on"
+    actions:
+      - variables:
+          cars: "{{ state_attr('sensor.ev_active_car', 'cars') or [] }}"
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: which car?"
+          message: >-
+            A car was plugged in. Active car: {{ states('sensor.ev_active_car') }}.
+            Pick another one if that is wrong.
+          tag: ev_which_car
+          color: blue
+          priority: high
+          actions: >-
+            {% set ns = namespace(a=[]) %}
+            {% for c in cars %}
+              {% set guest = c.slot != 1 and states('input_text.ev_car' ~ c.slot ~ '_soc_entity') | trim in ['', 'unknown', 'unavailable'] %}
+              {% set ns.a = ns.a + [{'action': 'EV_CAR_' ~ c.slot, 'title': c.name ~ (' — force charge' if guest else '')}] %}
+            {% endfor %}
+            {{ ns.a }}
+
+  # Answer from a "which car?" or phase-check notification. A guest pick also
+  # starts a one-time force charge (8 h, ends on unplug).
+  - id: ev_car_notification_action
+    alias: "EV: Car picked from notification"
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.event.data.action is string and trigger.event.data.action.startswith('EV_CAR_') }}"
+    actions:
+      - variables:
+          slot: "{{ trigger.event.data.action[7:] | int(0) }}"
+      - condition: template
+        value_template: "{{ slot in [1, 2, 3] }}"
+      - action: script.ev_select_car
+        data: { slot: "{{ slot }}" }
+      - if:
+          - condition: template
+            value_template: "{{ slot != 1 and states('input_text.ev_car' ~ slot ~ '_soc_entity') | trim in ['', 'unknown', 'unavailable'] }}"
+          - condition: state
+            entity_id: binary_sensor.ev_is_connected
+            state: "on"
+        then:
+          - action: input_boolean.turn_on
+            target: { entity_id: input_boolean.ev_force_charge_once }
+
+  # When a guest unplugs, the last own car becomes active again — otherwise
+  # your own car would next charge as a guest, without its limit.
+  - id: ev_guest_unplugged
+    alias: "EV: Guest unplugged — back to own car"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        to: "off"
+        for: { minutes: 1 }
+    conditions:
+      - condition: template
+        value_template: "{{ state_attr('sensor.ev_active_car', 'guest') in [true, 'true', 'True'] }}"
+      - condition: template
+        value_template: "{{ states('sensor.ev_last_own_car_slot') | int(1) != state_attr('sensor.ev_active_car', 'slot') | int(1) }}"
+    actions:
+      - action: script.ev_select_car
+        data: { slot: "{{ states('sensor.ev_last_own_car_slot') | int(1) }}" }
+
+  # Phase check: a 1-phase car only draws on charger L1. If that happens while
+  # the charger is not forced to single-phase and the selected car is a 3-phase
+  # car, ask — never switch. It cannot tell which 1-phase car it is, so with
+  # several 1-phase slots it offers all of them.
+  - id: ev_car_phase_check
+    alias: "EV: Phase check (1-phase car while a 3-phase car is selected)"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: template
+        value_template: >-
+          {{ is_state('binary_sensor.ev_multiple_cars', 'on')
+             and is_state('binary_sensor.ev_car_single_phase', 'off')
+             and is_state('switch.peblar_ev_charger_force_single_phase', 'off')
+             and states('sensor.peblar_ev_charger_power_phase_1') | float(0) > 1000
+             and states('sensor.peblar_ev_charger_power_phase_2') | float(0) < 100
+             and states('sensor.peblar_ev_charger_power_phase_3') | float(0) < 100 }}
+        for: { minutes: 3 }
+    conditions:
+      - condition: state
+        entity_id: input_boolean.ev_notifications_enabled
+        state: "on"
+    actions:
+      - variables:
+          candidates: >-
+            {% set ns = namespace(l=[]) %}
+            {% for c in state_attr('sensor.ev_active_car', 'cars') or [] %}
+              {% if is_state('input_boolean.ev_car' ~ c.slot ~ '_single_phase', 'on') %}
+                {% set ns.l = ns.l + [c] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.l }}
+      - condition: template
+        value_template: "{{ candidates | count > 0 }}"
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: other car charging?"
+          message: >-
+            Only charger phase 1 is drawing power, but {{ states('sensor.ev_active_car') }}
+            (3-phase) is selected.
+            {% if candidates | count == 1 %}{{ candidates[0].name }} seems to be charging — switch?
+            {% else %}A 1-phase car seems to be charging — which one?{% endif %}
+          tag: ev_phase_check
+          color: orange
+          priority: high
+          actions: >-
+            {% set ns = namespace(a=[]) %}
+            {% for c in candidates %}
+              {% set ns.a = ns.a + [{'action': 'EV_CAR_' ~ c.slot, 'title': 'Switch to ' ~ c.name}] %}
+            {% endfor %}
+            {{ ns.a }}

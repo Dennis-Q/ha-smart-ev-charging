@@ -5,15 +5,32 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
-- **Car entities are configurable** instead of hard-wired to the Skoda Elroq (step 1 of
-  multi-vehicle support). New fields under Advanced settings → Car entities:
-  `input_text.ev_car_soc_entity` (required), `ev_car_target_soc_entity`,
-  `ev_car_charge_limit_entity`, `ev_car_charging_switch_entity`, `ev_car_connected_entity`
-  (optional — an empty field skips what needs it). The logic reads them through
-  `sensor.ev_car_soc`, `sensor.ev_car_target_soc` and `binary_sensor.ev_car_reports_connected`.
-  `binary_sensor.ev_car_setup_missing` + a dashboard banner while the SoC entity is not set.
-  With a MySkoda car the fields are filled in at start while the SoC field is empty (waits up
-  to 5 minutes for the integration), so an existing install behaves as before.
+- **Up to three cars** instead of the hard-wired Skoda Elroq (with Mik3yZ). New package
+  `packages/ev/ev_vehicles.yaml` and a **Cars** view. Per car: name, battery capacity, max charge
+  power, *charges on 1 phase*, and the entities of its integration — SoC sensor, charge-limit
+  number, start charging (switch or button), connected sensor; an empty field skips what needs
+  it. The logic reads the active car through `sensor.ev_active_car`, `sensor.ev_car_soc`,
+  `sensor.ev_car_target_soc`, `sensor.ev_car_expected_limit`, `sensor.ev_car_battery_capacity`,
+  `sensor.ev_car_max_power`, `binary_sensor.ev_car_single_phase`,
+  `binary_sensor.ev_car_reports_connected`.
+  - Car 1 is always on; with only car 1 nothing about choosing a car appears. With more cars:
+    car selector on the main view, **"which car?"** notification at plug-in (no answer = the
+    current car stays), and a **phase check** that asks (never switches) when only L1 draws
+    while a 3-phase car is selected.
+  - **Guest**: car 2/3 without a SoC sensor — no car control, the charger is steered alone;
+    cheapest charging uses the whole window. Picking it in the plug-in notification starts a
+    one-time force charge; when it unplugs the last own car becomes active again.
+  - **1-phase cars** (e.g. Dacia Spring, Mik3yZ 7f84856): the charger stays forced single-phase
+    in solar, force and window, so solar gets the whole surplus instead of a third of it.
+  - **Car limit writes are rounded and clamped** to the number's min/max/step (Renault: 55–100
+    in steps of 5); the limit check compares with that value, so it never retries an
+    unreachable limit.
+  - **MySkoda prefill**: while car 1's SoC field is empty, the MySkoda entities are filled in at
+    start (waits up to 5 minutes for the integration), so an existing install behaves as before.
+  - `binary_sensor.ev_car_setup_missing` + dashboard banner when car 1 has no SoC entity or a
+    configured one does not exist.
+  - Removed: `input_number.ev_battery_capacity_kwh` (now per car; 60 kWh / 11 kW by default).
+  - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
 - **`sensor.ev_expected_charging_limit` is never empty** (from Mik3yZ, 6789b4c): it follows

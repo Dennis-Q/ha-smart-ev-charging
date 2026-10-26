@@ -264,6 +264,9 @@ template:
           {% endif %}
 
       # Determine optimal phase mode
+      # A 1-phase car (e.g. Dacia Spring) only draws on charger L1: it always gets
+      # single_phase, so the whole surplus goes to that phase instead of a third of
+      # it (Mik3yZ, 7f84856; per car in ev_vehicles.yaml).
       - name: "EV Optimal Charging Phase Mode"
         unique_id: ev_optimal_charging_phase_mode
           #  {% set excess = states('sensor.ev_grid_excess_power') | float(0) %}
@@ -277,6 +280,8 @@ template:
           {% set min_charge_threshold = states('input_number.ev_solar_min_charge_threshold_w') | float(1380) %}
           {% if excess < min_charge_threshold %}
             stop
+          {% elif is_state('binary_sensor.ev_car_single_phase', 'on') %}
+            single_phase
           {% elif excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
             three_phase
           {% elif excess <= switch_to_1phase_threshold %}
