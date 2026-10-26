@@ -37,9 +37,10 @@ Per car (`ev_car1_*`, `ev_car2_*`, `ev_car3_*`):
 
 Car 1 is always on. With only car 1 nothing about choosing a car appears. With car 2 or 3
 switched on, the main view gets a car selector and plugging in sends a **"which car?"**
-notification (mobile app buttons; no answer = the current car stays). Choosing a **guest**
-there also starts a one-time force charge; when a guest unplugs, the last own car becomes
-active again. A **phase check** asks — never switches — when only charger phase 1 draws power
+notification (mobile app buttons; no answer = the current car stays). A **guest** (car 2/3
+without a SoC sensor) gets no window charging, only force and solar; selecting one — on the
+dashboard or in the notification — turns on a one-time force charge (turning it off and solar
+on is up to the user). When a guest unplugs, the last own car becomes active again. A **phase check** asks — never switches — when only charger phase 1 draws power
 while a 3-phase car is selected.
 
 With a **MySkoda** car (`sensor.skoda_<car>_battery_percentage`) car 1 is filled in at start

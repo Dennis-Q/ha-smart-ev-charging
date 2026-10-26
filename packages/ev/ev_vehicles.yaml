@@ -14,13 +14,13 @@
 #
 # Slot 1 is always enabled (your own car). Slots 2 and 3 are off by default;
 # slot 3 starts as "Guest". Slot 2 or 3 without a SoC entity is a guest: no car
-# control at all — the project only steers the charger (no hours needed, so
-# cheapest becomes the whole window; force runs until the car stops, the cable
-# comes out or 8 h pass).
+# control at all — the project only steers the charger. A guest gets no window
+# charging (no SoC, so no hours needed); selecting a guest turns on a one-time
+# force charge (runs until the car stops, the cable comes out or 8 h pass).
+# Turning that off and solar on is up to the user.
 #
 # Choosing the car is manual: input_select.ev_active_car (main view, only with
-# more than one slot) and a "Which car?" notification at plug-in. Choosing a
-# guest there also starts a one-time force charge. When a guest unplugs, the
+# more than one slot) and a "Which car?" notification at plug-in. When a guest unplugs, the
 # last own car becomes active again. A phase check asks — never switches — when
 # a 1-phase car seems to charge while a 3-phase car is selected.
 # Multi-car design and the 1-phase handling with Mik3yZ (github.com/Mik3yZ).
@@ -616,8 +616,7 @@ automation:
             {% endfor %}
             {{ ns.a }}
 
-  # Answer from a "which car?" or phase-check notification. A guest pick also
-  # starts a one-time force charge (8 h, ends on unplug).
+  # Answer from a "which car?" or phase-check notification.
   - id: ev_car_notification_action
     alias: "EV: Car picked from notification"
     mode: queued
@@ -634,15 +633,27 @@ automation:
         value_template: "{{ slot in [1, 2, 3] }}"
       - action: script.ev_select_car
         data: { slot: "{{ slot }}" }
-      - if:
-          - condition: template
-            value_template: "{{ slot != 1 and states('input_text.ev_car' ~ slot ~ '_soc_entity') | trim in ['', 'unknown', 'unavailable'] }}"
-          - condition: state
-            entity_id: binary_sensor.ev_is_connected
-            state: "on"
-        then:
-          - action: input_boolean.turn_on
-            target: { entity_id: input_boolean.ev_force_charge_once }
+
+  # Selecting a guest (dashboard or notification) turns on a one-time force
+  # charge: 8 h, ends on unplug. Turning it off and solar on is up to the user.
+  - id: ev_guest_selected_force_charge
+    alias: "EV: Guest selected — force charge"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.ev_active_car
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and trigger.to_state is not none
+             and trigger.to_state.attributes.guest in [true, 'true', 'True']
+             and trigger.from_state.attributes.slot != trigger.to_state.attributes.slot }}
+      - condition: state
+        entity_id: input_boolean.ev_force_charge_permanent
+        state: "off"
+    actions:
+      - action: input_boolean.turn_on
+        target: { entity_id: input_boolean.ev_force_charge_once }
 
   # When a guest unplugs, the last own car becomes active again — otherwise
   # your own car would next charge as a guest, without its limit.

@@ -17,9 +17,10 @@ All notable changes to this project will be documented here.
     car selector on the main view, **"which car?"** notification at plug-in (no answer = the
     current car stays), and a **phase check** that asks (never switches) when only L1 draws
     while a 3-phase car is selected.
-  - **Guest**: car 2/3 without a SoC sensor — no car control, the charger is steered alone;
-    cheapest charging uses the whole window. Picking it in the plug-in notification starts a
-    one-time force charge; when it unplugs the last own car becomes active again.
+  - **Guest**: car 2/3 without a SoC sensor — no car control, the charger is steered alone.
+    No window charging (no SoC, so no hours needed), only force and solar. Selecting a guest
+    (dashboard or notification) turns on a one-time force charge; turning it off and solar on
+    is up to the user. When a guest unplugs the last own car becomes active again.
   - **1-phase cars** (e.g. Dacia Spring, Mik3yZ 7f84856): the charger stays forced single-phase
     in solar, force and window, so solar gets the whole surplus instead of a third of it.
   - **Car limit writes are rounded and clamped** to the number's min/max/step (Renault: 55–100

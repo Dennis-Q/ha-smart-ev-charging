@@ -518,11 +518,11 @@ views:
           (no answer = the current car stays).
 
           **SoC sensor**: battery level in %. Required for car 1. Car 2/3 without
-          it is a **guest**: no car control at all, the charger is steered alone —
-          cheapest charging uses the whole window, force charging runs until the car
-          stops, the cable comes out or 8 h pass. Picking a guest in the plug-in
-          notification also starts a force charge; when a guest unplugs, the last
-          own car becomes active again.
+          it is a **guest**: no car control at all, the charger is steered alone.
+          A guest gets no window charging, only force and solar. Selecting a guest
+          turns on a one-time force charge (until the car stops, the cable comes out
+          or 8 h pass) — turn it off and solar on yourself if you prefer. When a
+          guest unplugs, the last own car becomes active again.
 
           **Charge limit number**: the car's own charge limit; read, and set to the
           limit of the active mode (rounded and clamped to what the number accepts).

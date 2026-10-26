@@ -286,12 +286,12 @@ template:
         state: >
           {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
           {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') %}
+          {# A guest car (no car data) gets no window charging — only force and solar #}
+          {% set is_guest = state_attr('sensor.ev_active_car', 'guest') in [true, 'true', 'True'] %}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') and not is_guest %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
-          {# A guest car has no SoC, so no hours needed: it gets the whole window #}
-          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on')
-                                      and state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True'] %}
+          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
           {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
           {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
           {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
