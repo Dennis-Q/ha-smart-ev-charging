@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.19] – unreleased
+
+### Added
+- **Car entities are configurable** instead of hard-wired to the Skoda Elroq (step 1 of
+  multi-vehicle support). New fields under Advanced settings → Car entities:
+  `input_text.ev_car_soc_entity` (required), `ev_car_target_soc_entity`,
+  `ev_car_charge_limit_entity`, `ev_car_charging_switch_entity`, `ev_car_connected_entity`
+  (optional — an empty field skips what needs it). The logic reads them through
+  `sensor.ev_car_soc`, `sensor.ev_car_target_soc` and `binary_sensor.ev_car_reports_connected`.
+  `binary_sensor.ev_car_setup_missing` + a dashboard banner while the SoC entity is not set.
+  With a MySkoda car the fields are filled in at start while the SoC field is empty (waits up
+  to 5 minutes for the integration), so an existing install behaves as before.
+
+### Fixed
+- **`sensor.ev_expected_charging_limit` is never empty** (from Mik3yZ, 6789b4c): it follows
+  `sensor.ev_charging_mode`; with no active mode it is the car's own limit, so — as before —
+  nothing is corrected then. Ends the recurring "invalid sensor state" error. New attribute
+  `limit_source` (the mode, or `car`).
+- **Plug-in while no mode applies disarms the charger** (Mik3yZ, from 7f84856): the
+  `connected` trigger of `ev_generic_charging_mode_control` now also turns the charge switch
+  off when `sensor.ev_charging_mode` is `none`, in case it was left on.
+- **Dashboard banners are always on top** (both dashboards): all banners sit in one vertical
+  stack as the first card. Hidden banner cards still took a masonry slot, so a visible banner
+  could land in the middle column on desktop instead of at the top.
+- `ev_validate_charging_limit` only compares when both limits are numbers (it used to raise a
+  template error on an empty expected limit).
+
 ## [0.2.18] – unreleased
 
 ### Added

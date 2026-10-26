@@ -14,6 +14,24 @@ Probably incomplete but it's a start:
 - P1-meter (preferably with quick updates)
 - Peblar EV charger with **Modbus TCP enabled** (see below)
 - Frank Energie integration (default price source) or Entso-e — see `input_text.ev_price_entity`
+- A car integration with at least a battery level (SoC) sensor — see "Car entities" below
+
+## Car entities
+
+The logic never reads the car integration directly; it reads `sensor.ev_car_soc`,
+`sensor.ev_car_target_soc` and `binary_sensor.ev_car_reports_connected`, which follow the
+entities set under **Advanced settings → Car entities**:
+
+| Field | Entity | Used for | Empty |
+|---|---|---|---|
+| `ev_car_soc_entity` | sensor, battery level % — **required** | hours needed (window), force once until full, charge-complete notification | setup banner |
+| `ev_car_target_soc_entity` | sensor, the car's own charge limit % | comparing with the limit of the active mode | the charge-limit number's state |
+| `ev_car_charge_limit_entity` | number, sets the car's charge limit % | keeping the car's limit at the active mode's limit (`sensor.ev_expected_charging_limit`) | the car keeps its own limit |
+| `ev_car_charging_switch_entity` | switch, car-side charging | turned on when force charging starts | skipped |
+| `ev_car_connected_entity` | binary_sensor, the car reports the cable plugged in | re-checks the charge limit when the car reports in | skipped (plug-in comes from the charger) |
+
+With a **MySkoda** car (`sensor.skoda_<car>_battery_percentage`) the fields are filled in at
+start while the SoC field is empty, so an existing install keeps working without setup.
 
 ### Enabling Modbus on the Peblar charger
 

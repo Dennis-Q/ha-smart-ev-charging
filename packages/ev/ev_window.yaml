@@ -346,16 +346,14 @@ template:
           {% endif %}
 
       # Calculate hours needed to EV charge (window)
-      # Requires:
-      # - Skoda integration & Elroq car (skoda_elroq_battery_percentage)
-      # -
+      # Requires the car SoC (sensor.ev_car_soc ← input_text.ev_car_soc_entity)
 
       - name: "EV Hours Needed For Charging"
         unique_id: ev_hours_needed_for_charging
         unit_of_measurement: "h"
         icon: mdi:clock-fast
         state: >
-          {% set current_battery = states('sensor.skoda_elroq_battery_percentage') | float(0) %}
+          {% set current_battery = states('sensor.ev_car_soc') | float(0) %}
           {% set target_battery = states('input_number.ev_charging_limit_window') | float(0) %}
           {% set battery_capacity = states('input_number.ev_battery_capacity_kwh') | float(82) %}
           {% set charger_power = states('input_number.ev_charger_max_power_kw') | float(11) %}
@@ -370,7 +368,7 @@ template:
             0.0
           {% endif %}
         attributes:
-          current_battery_percent: "{{ states('sensor.skoda_elroq_battery_percentage') | float(0) | round(1) }}"
+          current_battery_percent: "{{ states('sensor.ev_car_soc') | float(0) | round(1) }}"
           target_battery_percent: "{{ states('input_number.ev_charging_limit_window') | float(0) | round(1) }}"
           battery_capacity_kwh: "{{ states('input_number.ev_battery_capacity_kwh') | float(0) | round(1) }}"
           

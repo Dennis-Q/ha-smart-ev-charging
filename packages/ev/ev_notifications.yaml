@@ -115,12 +115,12 @@ automation:
     max_exceeded: silent
     triggers:
       - trigger: numeric_state
-        entity_id: sensor.skoda_elroq_battery_percentage
+        entity_id: sensor.ev_car_soc
         above: 99
       - trigger: template
         value_template: >-
           {{
-            states('sensor.skoda_elroq_battery_percentage') | int(0)
+            states('sensor.ev_car_soc') | int(0)
             >=
             states('sensor.ev_expected_charging_limit') | int(101)
           }}
@@ -136,9 +136,9 @@ automation:
         data:
           title: "EV Charging Complete"
           message: >-
-            Your Elroq has reached the set charging limit of
+            The car has reached the set charging limit of
             {{ states('sensor.ev_expected_charging_limit') }}%
-            (current: {{ states('sensor.skoda_elroq_battery_percentage') }}%).
+            (current: {{ states('sensor.ev_car_soc') }}%).
           tag: ev_complete
           color: green
           priority: high

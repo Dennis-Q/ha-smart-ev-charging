@@ -3,165 +3,185 @@
 views:
   - title: EV Solar Charging
     cards:
-      # ── Red banner: charger warnings or errors active ────────────────────────
-      - type: markdown
-        content: >-
-          {%- set ns = namespace(w=[], e=[]) -%}
-          {%- for i in [1,2,3,4,5] -%}
-          {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
-          {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
-          {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
-          {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
-          {%- endfor -%}
-          <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
-          {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
-          {% if ns.w %}Warnings: <strong>{{ ns.w | join(', ') }}</strong>{% endif %}</ha-alert>
-        visibility:
-          - condition: or
-            conditions:
+      # ── Banners, in one stack so they are always the first card (top-left on
+      #    desktop, top on phones): hidden cards still take a masonry slot, so
+      #    separate banner cards could land in another column.
+      - type: vertical-stack
+        cards:
+          # ── Red banner: charger warnings or errors active ────────────────────────
+          - type: markdown
+            content: >-
+              {%- set ns = namespace(w=[], e=[]) -%}
+              {%- for i in [1,2,3,4,5] -%}
+              {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
+              {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
+              {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
+              {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
+              {%- endfor -%}
+              <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
+              {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
+              {% if ns.w %}Warnings: <strong>{{ ns.w | join(', ') }}</strong>{% endif %}</ha-alert>
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: binary_sensor.peblar_ev_charger_active_warnings
+                    state: "on"
+                  - condition: state
+                    entity: binary_sensor.peblar_ev_charger_active_errors
+                    state: "on"
+          # ── Red banner: defaults not applied ────────────────────────────────────
+          # ev_power_buffer_watts == -7000 (the helper's min) is treated as the
+          # "user has never run apply_defaults" signal. After apply_defaults it
+          # becomes 0, and the banner + button hide.
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="error"><strong>EV defaults not
+              applied</strong><br>The power buffer is at <strong>−7000 W</strong>,
+              which indicates the project's default values have not been applied
+              yet. Click the button below to run
+              <code>script.ev_apply_defaults</code> and set all helpers to sensible
+              starting values.</ha-alert>
+            visibility:
+              - condition: numeric_state
+                entity: input_number.ev_power_buffer_watts
+                below: -6999.5
+          - type: entities
+            show_header_toggle: false
+            state_color: false
+            entities:
+              - type: button
+                name: EV defaults
+                icon: mdi:tune-vertical
+                action_name: Apply
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.ev_apply_defaults
+                  confirmation:
+                    text: >-
+                      This will overwrite every user-configurable EV helper with
+                      the project's default values. Internal state (force-charge
+                      timeout) is preserved. Continue?
+            visibility:
+              - condition: numeric_state
+                entity: input_number.ev_power_buffer_watts
+                below: -6999.5
+          # ── Yellow banner: notify target invalid ───────────────────────────────
+          # Shown when binary_sensor.ev_notify_target_invalid is 'on'. Mirrors
+          # the persistent_notification.create from ev_validate_notify_target,
+          # but as a dashboard banner — more visible than the bell icon and
+          # immune to the modern-HA quirk where persistent notifications aren't
+          # exposed as state entities.
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="warning"><strong>EV notify action not
+              configured</strong><br>The <code>input_text.ev_notify_entity_id</code>
+              helper is empty, malformed, or points to a target that doesn't
+              exist. EV notifications fall back to HA persistent notifications
+              until you set a valid target under <strong>Advanced settings →
+              Notifications</strong>.<br><br>Current value:
+              <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
+              Available targets:
+              <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') | join(', ') or '(none found)' }}</code>
+              </ha-alert>
+            visibility:
               - condition: state
-                entity: binary_sensor.peblar_ev_charger_active_warnings
+                entity: binary_sensor.ev_notify_target_invalid
                 state: "on"
+          # ── Yellow banner: phase-switch thresholds off recommendation ──────────
+          # Shown if ANY of the three solar thresholds isn't at its recommended
+          # value (4800 / 3500 / 1380). Lists current vs recommended inline.
+          - type: markdown
+            content: >-
+              {% set v3 = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(0) | int %}
+
+              {% set v1 = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(0) | int %}
+
+              {% set vmin = states('input_number.ev_solar_min_charge_threshold_w') | float(0) | int %}
+
+              <ha-alert alert-type="warning"><strong>Solar phase-switch thresholds
+              are not at recommended values</strong><br>
+              • Switch to 3-phase above: <strong>{{ v3 }} W</strong>{% if v3 != 4800 %} — recommended <strong>4800</strong>{% else %} ✓{% endif %}<br>
+              • Switch back to 1-phase below: <strong>{{ v1 }} W</strong>{% if v1 != 3500 %} — recommended <strong>3500</strong>{% else %} ✓{% endif %}<br>
+              • Stop charging below: <strong>{{ vmin }} W</strong>{% if vmin != 1380 %} — recommended <strong>1380</strong>{% else %} ✓{% endif %}<br>
+              <br>Adjust under <strong>Advanced settings</strong>, or run
+              <strong>Apply defaults</strong> to reset.</ha-alert>
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                    below: 4800
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_switch_to_3phase_threshold_w
+                    above: 4800
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                    below: 3500
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_switch_to_1phase_threshold_w
+                    above: 3500
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_min_charge_threshold_w
+                    below: 1380
+                  - condition: numeric_state
+                    entity: input_number.ev_solar_min_charge_threshold_w
+                    above: 1380
+          # ── Red banner: car SoC entity missing ───────────────────────────────
+          # Shown when binary_sensor.ev_car_setup_missing is 'on' — the required
+          # car SoC entity is empty or does not exist.
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="error"><strong>Car SoC entity not set</strong><br>
+              Hours needed for window charging, "force once until full" and the
+              charge-complete notification need the car's battery level.
+              {% set e = state_attr('binary_sensor.ev_car_setup_missing', 'soc_entity') %}
+              {% if e %}<br>Entity <strong>{{ e }}</strong> does not exist.{% endif %}
+              <br><br>Set it under <strong>Advanced settings → Car entities</strong>.</ha-alert>
+            visibility:
               - condition: state
-                entity: binary_sensor.peblar_ev_charger_active_errors
+                entity: binary_sensor.ev_car_setup_missing
                 state: "on"
-      # ── Red banner: defaults not applied ────────────────────────────────────
-      # ev_power_buffer_watts == -7000 (the helper's min) is treated as the
-      # "user has never run apply_defaults" signal. After apply_defaults it
-      # becomes 0, and the banner + button hide.
-      - type: markdown
-        content: >-
-          <ha-alert alert-type="error"><strong>EV defaults not
-          applied</strong><br>The power buffer is at <strong>−7000 W</strong>,
-          which indicates the project's default values have not been applied
-          yet. Click the button below to run
-          <code>script.ev_apply_defaults</code> and set all helpers to sensible
-          starting values.</ha-alert>
-        visibility:
-          - condition: numeric_state
-            entity: input_number.ev_power_buffer_watts
-            below: -6999.5
-      - type: entities
-        show_header_toggle: false
-        state_color: false
-        entities:
-          - type: button
-            name: EV defaults
-            icon: mdi:tune-vertical
-            action_name: Apply
-            tap_action:
-              action: perform-action
-              perform_action: script.turn_on
-              target:
-                entity_id: script.ev_apply_defaults
-              confirmation:
-                text: >-
-                  This will overwrite every user-configurable EV helper with
-                  the project's default values. Internal state (force-charge
-                  timeout) is preserved. Continue?
-        visibility:
-          - condition: numeric_state
-            entity: input_number.ev_power_buffer_watts
-            below: -6999.5
-      # ── Yellow banner: notify target invalid ───────────────────────────────
-      # Shown when binary_sensor.ev_notify_target_invalid is 'on'. Mirrors
-      # the persistent_notification.create from ev_validate_notify_target,
-      # but as a dashboard banner — more visible than the bell icon and
-      # immune to the modern-HA quirk where persistent notifications aren't
-      # exposed as state entities.
-      - type: markdown
-        content: >-
-          <ha-alert alert-type="warning"><strong>EV notify action not
-          configured</strong><br>The <code>input_text.ev_notify_entity_id</code>
-          helper is empty, malformed, or points to a target that doesn't
-          exist. EV notifications fall back to HA persistent notifications
-          until you set a valid target under <strong>Advanced settings →
-          Notifications</strong>.<br><br>Current value:
-          <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
-          Available targets:
-          <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') | join(', ') or '(none found)' }}</code>
-          </ha-alert>
-        visibility:
-          - condition: state
-            entity: binary_sensor.ev_notify_target_invalid
-            state: "on"
-      # ── Yellow banner: phase-switch thresholds off recommendation ──────────
-      # Shown if ANY of the three solar thresholds isn't at its recommended
-      # value (4800 / 3500 / 1380). Lists current vs recommended inline.
-      - type: markdown
-        content: >-
-          {% set v3 = states('input_number.ev_solar_switch_to_3phase_threshold_w') | float(0) | int %}
-
-          {% set v1 = states('input_number.ev_solar_switch_to_1phase_threshold_w') | float(0) | int %}
-
-          {% set vmin = states('input_number.ev_solar_min_charge_threshold_w') | float(0) | int %}
-
-          <ha-alert alert-type="warning"><strong>Solar phase-switch thresholds
-          are not at recommended values</strong><br>
-          • Switch to 3-phase above: <strong>{{ v3 }} W</strong>{% if v3 != 4800 %} — recommended <strong>4800</strong>{% else %} ✓{% endif %}<br>
-          • Switch back to 1-phase below: <strong>{{ v1 }} W</strong>{% if v1 != 3500 %} — recommended <strong>3500</strong>{% else %} ✓{% endif %}<br>
-          • Stop charging below: <strong>{{ vmin }} W</strong>{% if vmin != 1380 %} — recommended <strong>1380</strong>{% else %} ✓{% endif %}<br>
-          <br>Adjust under <strong>Advanced settings</strong>, or run
-          <strong>Apply defaults</strong> to reset.</ha-alert>
-        visibility:
-          - condition: or
-            conditions:
-              - condition: numeric_state
-                entity: input_number.ev_solar_switch_to_3phase_threshold_w
-                below: 4800
-              - condition: numeric_state
-                entity: input_number.ev_solar_switch_to_3phase_threshold_w
-                above: 4800
-              - condition: numeric_state
-                entity: input_number.ev_solar_switch_to_1phase_threshold_w
-                below: 3500
-              - condition: numeric_state
-                entity: input_number.ev_solar_switch_to_1phase_threshold_w
-                above: 3500
-              - condition: numeric_state
-                entity: input_number.ev_solar_min_charge_threshold_w
-                below: 1380
-              - condition: numeric_state
-                entity: input_number.ev_solar_min_charge_threshold_w
-                above: 1380
-      # ── Red banner: power entity unit mismatch ───────────────────────────
-      # Shown when a configured solar or home battery power entity reports
-      # in kW instead of W. Attributes show the unit of each entity.
-      - type: markdown
-        content: >-
-          <ha-alert alert-type="error"><strong>Power entity unit
-          mismatch</strong><br>A configured solar or home battery power
-          entity is reporting in <strong>kW</strong> instead of
-          <strong>W</strong>. Charging calculations will produce incorrect
-          results.<br>
-          • Solar entity 1: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_1_unit') }}</strong><br>
-          • Solar entity 2: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_2_unit') }}</strong><br>
-          • Battery entity: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'battery_entity_unit') }}</strong><br><br>
-          To fix: change the unit of the entity to <strong>W</strong> in Home Assistant
-          (Settings → Devices &amp; Services → Entities → select entity → Unit of measurement).
-          Note this may affect other automations or dashboards using the same entity.</ha-alert>
-        visibility:
-          - condition: state
-            entity: binary_sensor.ev_power_entity_unit_mismatch
-            state: "on"
-      # ── Red banner: P1 sensor unit mismatch ──────────────────────────────
-      # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
-      # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
-      # to W, but other units (Wh, kWh, etc.) will produce wrong results.
-      - type: markdown
-        content: >-
-          <ha-alert alert-type="error"><strong>P1 sensor unit
-          mismatch</strong><br>One or both P1 power sensors are not reporting
-          in <strong>W</strong>. The solar excess calculation expects watts —
-          a different unit will produce wrong results.<br>
-          • Consumption: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_consumption') }}</strong><br>
-          • Production: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_production') }}</strong><br><br>
-          Check your P1 meter integration and make sure it exposes power in
-          <strong>W</strong>.</ha-alert>
-        visibility:
-          - condition: state
-            entity: binary_sensor.ev_p1_unit_mismatch
-            state: "on"
+          # ── Red banner: power entity unit mismatch ───────────────────────────
+          # Shown when a configured solar or home battery power entity reports
+          # in kW instead of W. Attributes show the unit of each entity.
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="error"><strong>Power entity unit
+              mismatch</strong><br>A configured solar or home battery power
+              entity is reporting in <strong>kW</strong> instead of
+              <strong>W</strong>. Charging calculations will produce incorrect
+              results.<br>
+              • Solar entity 1: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_1_unit') }}</strong><br>
+              • Solar entity 2: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'solar_entity_2_unit') }}</strong><br>
+              • Battery entity: <strong>{{ state_attr('binary_sensor.ev_power_entity_unit_mismatch', 'battery_entity_unit') }}</strong><br><br>
+              To fix: change the unit of the entity to <strong>W</strong> in Home Assistant
+              (Settings → Devices &amp; Services → Entities → select entity → Unit of measurement).
+              Note this may affect other automations or dashboards using the same entity.</ha-alert>
+            visibility:
+              - condition: state
+                entity: binary_sensor.ev_power_entity_unit_mismatch
+                state: "on"
+          # ── Red banner: P1 sensor unit mismatch ──────────────────────────────
+          # Shown when binary_sensor.ev_p1_unit_mismatch is 'on' — i.e. either
+          # P1 sensor is not reporting in W. ev_grid_excess_power auto-scales kW
+          # to W, but other units (Wh, kWh, etc.) will produce wrong results.
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="error"><strong>P1 sensor unit
+              mismatch</strong><br>One or both P1 power sensors are not reporting
+              in <strong>W</strong>. The solar excess calculation expects watts —
+              a different unit will produce wrong results.<br>
+              • Consumption: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_consumption') }}</strong><br>
+              • Production: <strong>{{ state_attr('binary_sensor.ev_p1_unit_mismatch', 'unit_production') }}</strong><br><br>
+              Check your P1 meter integration and make sure it exposes power in
+              <strong>W</strong>.</ha-alert>
+            visibility:
+              - condition: state
+                entity: binary_sensor.ev_p1_unit_mismatch
+                state: "on"
       - type: entities
         title: EV Charging Settings
         show_header_toggle: false
@@ -208,18 +228,18 @@ views:
           - entity: input_number.ev_charging_limit_force
             name: Force Charging Limit (%)
           - type: divider
-          - entity: number.skoda_elroq_charge_limit
+          - entity: sensor.ev_car_target_soc
             name: Current Car Limit
       - type: entities
         title: EV Charging Status
         entities:
-          - entity: binary_sensor.skoda_elroq_charger_connected
-            name: Cable Connected
-          - entity: sensor.skoda_elroq_battery_percentage
+          - entity: binary_sensor.ev_car_reports_connected
+            name: Cable Connected (car)
+          - entity: sensor.ev_car_soc
             name: Battery Level
           - entity: sensor.skoda_elroq_range
             name: Range (left)
-          - entity: sensor.skoda_elroq_target_battery_percentage
+          - entity: sensor.ev_car_target_soc
             name: Car Charging Limit
           - entity: sensor.ev_expected_charging_limit
             name: Expected Charging Limit
@@ -523,6 +543,54 @@ views:
               longer added back, so the EV only gets what the battery leaves
               over. Leave empty to always let the EV go first.
               Example: `binary_sensor.hba_batteries_before_ev`
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Car entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.ev_car_soc_entity
+                name: SoC sensor (required)
+              - entity: input_text.ev_car_target_soc_entity
+                name: Target SoC sensor
+              - entity: input_text.ev_car_charge_limit_entity
+                name: Charge limit number
+              - entity: input_text.ev_car_charging_switch_entity
+                name: Charging switch
+              - entity: input_text.ev_car_connected_entity
+                name: Connected sensor
+              - type: divider
+              - entity: sensor.ev_car_soc
+                name: Car SoC (status)
+              - entity: sensor.ev_car_target_soc
+                name: Car target SoC (status)
+              - entity: binary_sensor.ev_car_setup_missing
+                name: Setup missing (status)
+          - type: markdown
+            content: >-
+              Entities of your car's integration. Only the **SoC sensor** is
+              required; leave the others empty if your car has no such entity.
+              With a MySkoda car these are filled in automatically while the
+              SoC field is empty.
+
+              **SoC sensor**: battery level in %.
+              Example: `sensor.skoda_elroq_battery_percentage`
+
+              **Target SoC sensor**: the car's own charge limit in %. Empty ⇒
+              the state of the charge limit number is used.
+              Example: `sensor.skoda_elroq_target_battery_percentage`
+
+              **Charge limit number**: sets the car's charge limit. The project
+              keeps it at the limit of the active mode. Empty ⇒ the car's own
+              limit applies. Example: `number.skoda_elroq_charge_limit`
+
+              **Charging switch**: turned on when force charging starts.
+              Example: `switch.skoda_elroq_charging`
+
+              **Connected sensor**: the car's own "cable plugged in"; re-checks
+              the charge limit when the car reports in. Plug-in itself is
+              taken from the charger.
+              Example: `binary_sensor.skoda_elroq_charger_connected`
       - type: entities
         title: Reset
         entities:

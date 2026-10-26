@@ -103,6 +103,48 @@ input_text:
     # e.g. notify.mobile_app_dennis_mobile — leave empty to fall back to
     # notify.persistent_notification
 
+  # Car entities — the logic reads them through the sensor.ev_car_* /
+  # binary_sensor.ev_car_* templates below, never directly. Only the SoC sensor
+  # is required (setup banner while it is missing); every other field is
+  # optional, and an empty field skips whatever needs it. Filled in with the
+  # MySkoda entities at start when the SoC field is empty and a MySkoda car
+  # exists (last step of ev_clear_unknown_entity_fields).
+  #
+  # ev_car_soc_entity             sensor, battery level in %   — required
+  #                               e.g. sensor.skoda_elroq_battery_percentage
+  # ev_car_target_soc_entity      sensor, the car's own charge limit in %
+  #                               e.g. sensor.skoda_elroq_target_battery_percentage
+  #                               (empty ⇒ the charge-limit number's state)
+  # ev_car_charge_limit_entity    number, sets the car's charge limit in %
+  #                               e.g. number.skoda_elroq_charge_limit
+  #                               (empty ⇒ the car keeps its own limit)
+  # ev_car_charging_switch_entity switch, starts charging on the car side
+  #                               e.g. switch.skoda_elroq_charging
+  # ev_car_connected_entity       binary_sensor, the car reports the cable plugged in
+  #                               e.g. binary_sensor.skoda_elroq_charger_connected
+  #                               (only re-checks the charge limit when the car
+  #                               wakes up; plug-in itself comes from the Peblar)
+  ev_car_soc_entity:
+    name: "EV Car SoC entity"
+    icon: mdi:battery-50
+    max: 100
+  ev_car_target_soc_entity:
+    name: "EV Car target SoC entity"
+    icon: mdi:battery-charging-80
+    max: 100
+  ev_car_charge_limit_entity:
+    name: "EV Car charge limit entity"
+    icon: mdi:battery-lock
+    max: 100
+  ev_car_charging_switch_entity:
+    name: "EV Car charging switch entity"
+    icon: mdi:car-electric
+    max: 100
+  ev_car_connected_entity:
+    name: "EV Car connected entity"
+    icon: mdi:ev-plug-type2
+    max: 100
+
 ## Scripts
 
 script:
@@ -174,7 +216,7 @@ script:
           entity_id: input_boolean.ev_notifications_enabled
       # Note: input_text helpers (ev_notify_entity_id, ev_solar_power_entity_1/2,
       # ev_home_battery_power_entity, ev_home_battery_assist_active_entity,
-      # ev_price_entity) are
+      # ev_price_entity, ev_car_*_entity) are
       # deliberately NOT reset — they are install-specific wiring.
 
   # Narrow reset for just the three solar phase-switch thresholds.
@@ -210,6 +252,27 @@ template:
         # state: "{{ is_state('sensor.peblar_ev_charger_state', 'evcharging') or is_state('sensor.peblar_ev_charger_state', 'suspended') }}"
 
         #
+
+      # The car's own "cable plugged in" (input_text.ev_car_connected_entity).
+      # Only used to re-check the car's charge limit once the car API wakes up.
+      - name: "EV Car Reports Connected"
+        unique_id: ev_car_reports_connected
+        availability: >-
+          {% set e = states('input_text.ev_car_connected_entity') | trim %}
+          {{ e not in ['', 'unknown', 'unavailable'] and states(e) not in ['unknown', 'unavailable'] }}
+        state: "{{ is_state(states('input_text.ev_car_connected_entity') | trim, 'on') }}"
+
+      # 'on' while the required car SoC entity is empty or does not exist —
+      # hours needed, force-once "full" and the charge-complete notification
+      # all need it. Shown as a setup banner on the dashboard.
+      - name: "EV Car Setup Missing"
+        unique_id: ev_car_setup_missing
+        device_class: problem
+        state: >-
+          {% set e = states('input_text.ev_car_soc_entity') | trim %}
+          {{ e in ['', 'unknown', 'unavailable'] or '.' not in e or states[e] is none }}
+        attributes:
+          soc_entity: "{{ states('input_text.ev_car_soc_entity') | trim }}"
 
       # 'on' when input_text.ev_notify_entity_id is empty, malformed, or
       # points to a modern notify entity. Any notify.* service that is NOT
@@ -265,44 +328,59 @@ template:
           {% endif %}
 
   - sensor:
-      # Determine expected charging limit
+      # Car state through the configured entities (input_text.ev_car_*_entity).
+      # Unavailable when the field is empty or the source has no value; readers
+      # keep their own fallbacks (float(0) etc.), as they had for the raw sensor.
+      - name: "EV Car SoC"
+        unique_id: ev_car_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        availability: >-
+          {% set e = states('input_text.ev_car_soc_entity') | trim %}
+          {{ e not in ['', 'unknown', 'unavailable'] and states(e) | is_number }}
+        state: "{{ states(states('input_text.ev_car_soc_entity') | trim) }}"
+
+      # The car's own charge limit: the target-SoC sensor, else the state of the
+      # charge-limit number (from Mik3yZ's 6789b4c fallback).
+      - name: "EV Car Target SoC"
+        unique_id: ev_car_target_soc
+        unit_of_measurement: "%"
+        availability: >-
+          {% set t = states('input_text.ev_car_target_soc_entity') | trim %}
+          {% set n = states('input_text.ev_car_charge_limit_entity') | trim %}
+          {{ (t not in ['', 'unknown', 'unavailable'] and states(t) | is_number) or
+             (n not in ['', 'unknown', 'unavailable'] and states(n) | is_number) }}
+        state: >-
+          {% set t = states('input_text.ev_car_target_soc_entity') | trim %}
+          {% set n = states('input_text.ev_car_charge_limit_entity') | trim %}
+          {{ states(t) if t not in ['', 'unknown', 'unavailable'] and states(t) | is_number else states(n) }}
+
+      # Determine expected charging limit (the car's charge limit is corrected to it).
+      # Follows sensor.ev_charging_mode while a mode is active. With no active mode it
+      # is the car's own limit, so nothing is corrected then and the state is never
+      # empty (from Mik3yZ's 6789b4c; the empty state used to log "invalid sensor state").
       # Ideas:
       # - Maybe let Window win if battery percentage is not met?
-      # - Or let Window win when in cheapest hours (not just window)
-      # - Or let Window win when in cheapest hours (not just window) and less than 10% difference?
       # - Maybe include 'expected solar left' as well
       - name: "EV Expected Charging Limit"
         unique_id: ev_expected_charging_limit
         unit_of_measurement: "%"
         state: >
-          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
-          {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') %}
-          {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
-          {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
-          {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
-          {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
-          {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
-          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
-          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
-                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
-                                      is_state(batt_assist_e, 'on') %}
-          {% if is_force_charging %}
-            {{ states('input_number.ev_charging_limit_force') | int }}
-          {% elif battery_assist_on %}
-            {{ states('input_number.ev_charging_limit_solar') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif solar_enabled and solar_viable %}
-            {{ states('input_number.ev_charging_limit_solar') | int }}
-          {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
-          {% elif is_window_active and not tarif_optimization %}
-            {{ states('input_number.ev_charging_limit_window') | int }}
+          {% set mode = states('sensor.ev_charging_mode') %}
+          {% if mode == 'force' %}
+            {{ states('input_number.ev_charging_limit_force') | int(100) }}
+          {% elif mode in ['battery_assist', 'solar'] %}
+            {{ states('input_number.ev_charging_limit_solar') | int(100) }}
+          {% elif mode in ['cheapest', 'window'] %}
+            {{ states('input_number.ev_charging_limit_window') | int(80) }}
+          {% else %}
+            {{ states('sensor.ev_car_target_soc') | int(states('input_number.ev_charging_limit_window') | int(80)) }}
           {% endif %}
-
+        attributes:
+          limit_source: >-
+            {% set mode = states('sensor.ev_charging_mode') %}
+            {{ mode if mode in ['force', 'battery_assist', 'solar', 'cheapest', 'window'] else 'car' }}
 
       - name: "EV Charging Mode"
         unique_id: ev_charging_mode
@@ -354,6 +432,7 @@ automation:
   # Set them to empty at start; every reader already treats unknown and empty the same.
   - id: ev_clear_unknown_entity_fields
     alias: "EV: Clear never-set entity fields"
+    # Also pre-fills the car entities (MySkoda) — see the last step.
     mode: single
     triggers:
       - trigger: homeassistant
@@ -372,6 +451,11 @@ automation:
             - input_text.ev_home_battery_power_entity
             - input_text.ev_home_battery_assist_active_entity
             - input_text.ev_home_battery_priority_entity
+            - input_text.ev_car_soc_entity
+            - input_text.ev_car_target_soc_entity
+            - input_text.ev_car_charge_limit_entity
+            - input_text.ev_car_charging_switch_entity
+            - input_text.ev_car_connected_entity
           sequence:
             - if:
                 - condition: template
@@ -381,6 +465,48 @@ automation:
                   continue_on_error: true
                   target: { entity_id: "{{ repeat.item }}" }
                   data: { value: "" }
+      # Car entities: fill in the MySkoda car (sensor.skoda_<car>_battery_percentage)
+      # while the required SoC field is empty — a fresh install, or the upgrade from
+      # the hard-wired Skoda entities. Only fields whose entity exists are filled;
+      # once the SoC field is set this never touches the fields again. A cloud
+      # integration can come up after us, so wait up to 5 minutes for it.
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.ev_car_soc_entity') | trim in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - wait_template: >-
+              {{ states.sensor | selectattr('entity_id', 'match', 'sensor\\.skoda_.+_battery_percentage$') | list | count > 0 }}
+            timeout: "00:05:00"
+      - variables:
+          skoda_soc: >-
+            {{ states.sensor | map(attribute='entity_id')
+               | select('match', 'sensor\\.skoda_.+_battery_percentage$')
+               | reject('match', '.*_target_battery_percentage$')
+               | sort | first | default('') }}
+          car: "{{ skoda_soc | replace('sensor.', '', 1) | replace('_battery_percentage', '') }}"
+      - if:
+          - condition: template
+            value_template: >-
+              {{ skoda_soc != '' and states('input_text.ev_car_soc_entity') | trim in ['', 'unknown', 'unavailable'] }}
+        then:
+          - repeat:
+              for_each:
+                - { field: input_text.ev_car_soc_entity, entity: "sensor.CAR_battery_percentage" }
+                - { field: input_text.ev_car_target_soc_entity, entity: "sensor.CAR_target_battery_percentage" }
+                - { field: input_text.ev_car_charge_limit_entity, entity: "number.CAR_charge_limit" }
+                - { field: input_text.ev_car_charging_switch_entity, entity: "switch.CAR_charging" }
+                - { field: input_text.ev_car_connected_entity, entity: "binary_sensor.CAR_charger_connected" }
+              sequence:
+                - variables:
+                    entity: "{{ repeat.item.entity | replace('CAR', car) }}"
+                - if:
+                    - condition: template
+                      value_template: "{{ states[entity] is not none }}"
+                  then:
+                    - action: input_text.set_value
+                      continue_on_error: true
+                      target: { entity_id: "{{ repeat.item.field }}" }
+                      data: { value: "{{ entity }}" }
 
   - id: "ev_force_charge_set_timeout"
     alias: "EV Force Charge - Set 8 Hour Timeout"
@@ -437,7 +563,7 @@ automation:
       - trigger: template
         value_template: >
           {% set limit = states('input_number.ev_charging_limit_force') | int(1) %}
-          {{ (states('sensor.skoda_elroq_battery_percentage') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
+          {{ (states('sensor.ev_car_soc') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
     actions:
       - action: input_boolean.turn_off
         target:
@@ -562,15 +688,27 @@ automation:
               # - condition: template
               #   value_template: "{{ states('sensor.peblar_ev_charger_state') not in ['unavailable', 'unknown', 'no_ev_connected'] }}"
             sequence:
-              - action: number.set_value
-                target:
-                  entity_id: number.skoda_elroq_charge_limit # probably also handled by ev charge validation automation
-                data:
-                  value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
+              # Car side, each only when its entity is configured (input_text.ev_car_*_entity)
+              - variables:
+                  car_limit_entity: "{{ states('input_text.ev_car_charge_limit_entity') | trim }}"
+                  car_switch_entity: "{{ states('input_text.ev_car_charging_switch_entity') | trim }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ car_limit_entity not in ['', 'unknown', 'unavailable'] }}"
+                then:
+                  - action: number.set_value
+                    target:
+                      entity_id: "{{ car_limit_entity }}" # probably also handled by ev charge validation automation
+                    data:
+                      value: "{{ states('input_number.ev_charging_limit_force') | int(100) }}"
               ## Not needed? Automation might get stuck when Car API is non-responsive
-              - action: switch.turn_on
-                target:
-                  entity_id: switch.skoda_elroq_charging
+              - if:
+                  - condition: template
+                    value_template: "{{ car_switch_entity not in ['', 'unknown', 'unavailable'] }}"
+                then:
+                  - action: switch.turn_on
+                    target:
+                      entity_id: "{{ car_switch_entity }}"
               - action: script.ev_notify_dispatch
                 data:
                   title: "EV Force Charge Activated"
@@ -602,14 +740,14 @@ automation:
       # - trigger: time_pattern
       #   minutes: "/10" # was /2
       - trigger: state # trigger on any state change
-        entity_id: 
-          - sensor.skoda_elroq_target_battery_percentage
+        entity_id:
+          - sensor.ev_car_target_soc
       - trigger: state # trigger any state not not to unknown
         entity_id: sensor.ev_expected_charging_limit
         not_to: "unknown"
       - trigger: state # trigger on 'on' state
         entity_id:
-          - binary_sensor.skoda_elroq_charger_connected
+          - binary_sensor.ev_car_reports_connected
           - input_boolean.ev_force_charge_permanent
           - input_boolean.ev_force_charge_once
           - input_boolean.ev_solar_charging
@@ -628,18 +766,23 @@ automation:
       - condition: state
         entity_id: binary_sensor.ev_is_connected
         state: "on"
+      # Only with a car charge-limit entity configured, and both limits known
       - condition: template
         value_template: >
-          {% set current_limit = states('sensor.skoda_elroq_target_battery_percentage') | int %}
-          {% set expected_limit = states('sensor.ev_expected_charging_limit') | int %}
-          {{ current_limit != expected_limit }}
+          {{ states('input_text.ev_car_charge_limit_entity') | trim not in ['', 'unknown', 'unavailable'] }}
+      - condition: template
+        value_template: >
+          {% set current_limit = states('sensor.ev_car_target_soc') %}
+          {% set expected_limit = states('sensor.ev_expected_charging_limit') %}
+          {{ current_limit | is_number and expected_limit | is_number and
+             current_limit | int != expected_limit | int }}
     actions:
       - variables:
           expected_limit: "{{ states('sensor.ev_expected_charging_limit') | int }}"
-          current_limit: "{{ states('sensor.skoda_elroq_target_battery_percentage') | int }}"
+          current_limit: "{{ states('sensor.ev_car_target_soc') | int }}"
       - action: number.set_value
         target:
-          entity_id: number.skoda_elroq_charge_limit
+          entity_id: "{{ states('input_text.ev_car_charge_limit_entity') | trim }}"
         data:
           value: "{{ expected_limit }}"
       - action: script.ev_notify_dispatch
@@ -742,8 +885,19 @@ automation:
                 target:
                   entity_id: switch.peblar_ev_charger_charge
           - conditions:
-              - condition: trigger
-                id: mode_none
+              - condition: or
+                conditions:
+                  - condition: trigger
+                    id: mode_none
+                  # Plug-in while no mode applies: disarm explicitly, in case the
+                  # charge switch was left on (Mik3yZ, 7f84856)
+                  - condition: and
+                    conditions:
+                      - condition: trigger
+                        id: connected
+                      - condition: state
+                        entity_id: sensor.ev_charging_mode
+                        state: "none"
             # No connection gate: stop regardless of plug state so the charge
             # switch is never left armed across a disconnect (re-writing 0 is
             # toggle-budget-free; harmless when no car is present).
