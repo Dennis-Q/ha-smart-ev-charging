@@ -20,7 +20,8 @@ All notable changes to this project will be documented here.
   - **Guest**: car 2/3 without a SoC sensor — no car control, the charger is steered alone.
     No window charging (no SoC, so no hours needed), only force and solar. Selecting a guest
     (dashboard or notification) turns on a one-time force charge; turning it off and solar on
-    is up to the user. When a guest unplugs the last own car becomes active again.
+    is up to the user. When a guest unplugs the last own car becomes active again. The Cars view
+    hides battery capacity and max power for a guest (only used with a SoC sensor).
   - **1-phase cars** (e.g. Dacia Spring, Mik3yZ 7f84856): the charger stays forced single-phase
     in solar, force and window, so solar gets the whole surplus instead of a third of it.
   - **Car limit writes are rounded and clamped** to the number's min/max/step (Renault: 55–100

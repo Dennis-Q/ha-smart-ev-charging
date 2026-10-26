@@ -463,10 +463,21 @@ views:
             entities:
                 - entity: input_text.ev_car2_name
                   name: Name
-                - entity: input_number.ev_car2_battery_capacity_kwh
-                  name: Battery capacity
-                - entity: input_number.ev_car2_max_power_kw
-                  name: Max charge power
+                # Only used with a SoC sensor — hidden for a guest
+                - type: conditional
+                  conditions:
+                    - entity: input_text.ev_car2_soc_entity
+                      state_not: ""
+                  row:
+                    entity: input_number.ev_car2_battery_capacity_kwh
+                    name: Battery capacity
+                - type: conditional
+                  conditions:
+                    - entity: input_text.ev_car2_soc_entity
+                      state_not: ""
+                  row:
+                    entity: input_number.ev_car2_max_power_kw
+                    name: Max charge power
                 - entity: input_boolean.ev_car2_single_phase
                   name: Charges on 1 phase
                 - type: divider
@@ -495,10 +506,21 @@ views:
             entities:
                 - entity: input_text.ev_car3_name
                   name: Name
-                - entity: input_number.ev_car3_battery_capacity_kwh
-                  name: Battery capacity
-                - entity: input_number.ev_car3_max_power_kw
-                  name: Max charge power
+                # Only used with a SoC sensor — hidden for a guest
+                - type: conditional
+                  conditions:
+                    - entity: input_text.ev_car3_soc_entity
+                      state_not: ""
+                  row:
+                    entity: input_number.ev_car3_battery_capacity_kwh
+                    name: Battery capacity
+                - type: conditional
+                  conditions:
+                    - entity: input_text.ev_car3_soc_entity
+                      state_not: ""
+                  row:
+                    entity: input_number.ev_car3_max_power_kw
+                    name: Max charge power
                 - entity: input_boolean.ev_car3_single_phase
                   name: Charges on 1 phase
                 - type: divider
@@ -522,7 +544,8 @@ views:
           A guest gets no window charging, only force and solar. Selecting a guest
           turns on a one-time force charge (until the car stops, the cable comes out
           or 8 h pass) — turn it off and solar on yourself if you prefer. When a
-          guest unplugs, the last own car becomes active again.
+          guest unplugs, the last own car becomes active again. A guest needs no battery capacity or max power;
+          those fields only show with a SoC sensor.
 
           **Charge limit number**: the car's own charge limit; read, and set to the
           limit of the active mode (rounded and clamped to what the number accepts).
