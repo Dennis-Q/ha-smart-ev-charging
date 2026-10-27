@@ -598,6 +598,15 @@ automation:
                   value: >
                     {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
                     {{ ma if ma >= 6000 else 6000 }}
+              # Same start value for the charge switch: turned on from 'off' it writes
+              # charge_limit_desired (the mA write above is refused while off)
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                data:
+                  value: >
+                    {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                    {{ [ma, 6000] | max // 1000 }}
               - action: switch.turn_on # force single phase charging
                 target:
                   entity_id: switch.peblar_ev_charger_force_single_phase
@@ -614,6 +623,13 @@ automation:
                   entity_id: number.peblar_ev_charger_charge_current_limit_ma
                 data:
                   value: 6000
+              # Same start value for the charge switch: turned on from 'off' it writes
+              # charge_limit_desired (the mA write above is refused while off)
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                data:
+                  value: 6
               - action: switch.turn_off # switch to 3-phase mode
                 target:
                   entity_id: switch.peblar_ev_charger_force_single_phase
@@ -666,6 +682,15 @@ automation:
                           value: >
                             {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
                             {{ ma if ma >= 6000 else 6000 }}
+                      # Same start value for the charge switch: turned on from 'off' it writes
+                      # charge_limit_desired (the mA write above is refused while off)
+                      - action: input_number.set_value
+                        target:
+                          entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                        data:
+                          value: >
+                            {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                            {{ [ma, 6000] | max // 1000 }}
                       - action: switch.turn_on
                         target:
                           entity_id: switch.peblar_ev_charger_force_single_phase
@@ -682,6 +707,13 @@ automation:
                           entity_id: number.peblar_ev_charger_charge_current_limit_ma
                         data:
                           value: 6000
+                      # Same start value for the charge switch: turned on from 'off' it writes
+                      # charge_limit_desired (the mA write above is refused while off)
+                      - action: input_number.set_value
+                        target:
+                          entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                        data:
+                          value: 6
                       - action: switch.turn_off
                         target:
                           entity_id: switch.peblar_ev_charger_force_single_phase
@@ -715,6 +747,15 @@ automation:
                           value: >
                             {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
                             {{ ma if ma >= 6000 else 6000 }}
+                      # Same start value for the charge switch: turned on from 'off' it writes
+                      # charge_limit_desired (the mA write above is refused while off)
+                      - action: input_number.set_value
+                        target:
+                          entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                        data:
+                          value: >
+                            {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
+                            {{ [ma, 6000] | max // 1000 }}
                       - action: switch.turn_on
                         target:
                           entity_id: switch.peblar_ev_charger_force_single_phase
@@ -731,6 +772,13 @@ automation:
                           entity_id: number.peblar_ev_charger_charge_current_limit_ma
                         data:
                           value: 6000
+                      # Same start value for the charge switch: turned on from 'off' it writes
+                      # charge_limit_desired (the mA write above is refused while off)
+                      - action: input_number.set_value
+                        target:
+                          entity_id: input_number.peblar_ev_charger_charge_limit_desired
+                        data:
+                          value: 6
                       - action: switch.turn_off
                         target:
                           entity_id: switch.peblar_ev_charger_force_single_phase

@@ -248,9 +248,28 @@ template:
               {%- set candidates = slots
                    | selectattr('ts', '>=', ws) | selectattr('ts', '<', we)
                    | selectattr('ts', '>', now_ts - step) | list -%}
+              {#- With the max price limit on, a slot above it never charges
+                  (ev_window_price_allowed), so it is not selected either — the
+                  plan on the dashboard then matches what will charge -#}
+              {%- if is_state('input_boolean.ev_window_max_price_enabled', 'on') -%}
+                {%- set max_p = states('input_number.ev_window_charging_max_price') | float(-999) -%}
+                {%- set candidates = candidates | selectattr('price', '<=', max_p) | list -%}
+              {%- endif -%}
               {%- set n = (hours_needed * pph) | round(0, 'ceil') | int -%}
+              {#- Keep the running slot once it is selected. As the SoC rises,
+                  hours_needed and n shrink; re-sorting by price could then drop the
+                  running slot for a cheaper later one — charging stops mid-slot and
+                  the rest is bought later (prod 2026-10-13, code review 2026-10-27).
+                  Only future slots are dropped when charging goes faster. -#}
+              {%- set prev = state_attr('sensor.ev_cheapest_hours_in_window', 'slots') or [] -%}
+              {%- set running = candidates | selectattr('ts', '<=', now_ts) | list -%}
+              {%- set keep = running if n > 0 and running
+                                   and prev | selectattr('ts', 'eq', running[0].ts) | list
+                                else [] -%}
+              {%- set rest = candidates | rejectattr('ts', 'in', keep | map(attribute='ts') | list)
+                             | sort(attribute='price') -%}
               {%- set ns = namespace(out=[]) -%}
-              {%- for s in (candidates | sort(attribute='price'))[:n] | sort(attribute='ts') -%}
+              {%- for s in (keep + rest[:n - keep | length]) | sort(attribute='ts') -%}
                 {%- set ns.out = ns.out + [{'ts': s.ts, 'time': s.ts | timestamp_custom('%Y-%m-%d %H:%M:%S'), 'price': s.price}] -%}
               {%- endfor -%}
               {{ ns.out | to_json }}
@@ -410,7 +429,8 @@ template:
           {% endif %}
 
       # 7) Sufficient known hours in window (based purely on available price slots)
-      # Counts every known slot in the window, including ones already passed.
+      # Counts every known slot in the window, including ones already passed
+      # (but not slots above the max price while that limit is on).
       - name: EV Sufficient Known Hours In Window
         unique_id: ev_sufficient_known_hours_in_window
         state: >
@@ -422,8 +442,12 @@ template:
           {% if slots | length == 0 or hours_needed == 0 or ws == 0 or we == 0 %}
             false
           {% else %}
-            {% set known = slots | selectattr('ts', '>=', ws) | selectattr('ts', '<', we) | list | length %}
-            {{ (known >= ((hours_needed * pph) | round(0, 'ceil') | int)) | lower }}
+            {% set known = slots | selectattr('ts', '>=', ws) | selectattr('ts', '<', we) | list %}
+            {# Slots above the max price (when on) never charge, so they do not count #}
+            {% if is_state('input_boolean.ev_window_max_price_enabled', 'on') %}
+              {% set known = known | selectattr('price', '<=', states('input_number.ev_window_charging_max_price') | float(-999)) | list %}
+            {% endif %}
+            {{ (known | length >= ((hours_needed * pph) | round(0, 'ceil') | int)) | lower }}
           {% endif %}
 
       # Might be useful for debugging. Disable when all works fine.

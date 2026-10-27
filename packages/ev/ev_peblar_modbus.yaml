@@ -685,7 +685,19 @@ template:
         # collision deterministically in favour of the later command: the
         # pending stop is abandoned (its mA-write suppression lifts) and the
         # limit write below proceeds.
+        #
+        # Already on (and no stop in progress): nothing to do. HA runs turn_on
+        # even when the switch is on, and the write below would replace the mA
+        # setpoint the solar loop just wrote with charge_limit_desired (16 A
+        # after a window/force session) until the next 3-s loop — seen on prod
+        # 2026-10-25 09:31 (3.4 kW on 1 phase for ~2 s) and at every 1P→3P
+        # step-up (code review 2026-10-27). A pending stop still counts as
+        # 'off': the switch reads 'on' for a poll or two after the 0-write.
         turn_on:
+          - condition: template
+            value_template: >-
+              {{ not is_state('switch.peblar_ev_charger_charge', 'on')
+                 or is_state('script.peblar_ev_charger_stop', 'on') }}
           - service: script.turn_off
             target:
               entity_id: script.peblar_ev_charger_stop

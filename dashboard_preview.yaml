@@ -347,7 +347,9 @@ views:
               title: Charging plan (€/kWh)
               show_states: false
             yaxis:
-              - decimals: 2
+              # Soft 0: the axis starts at 0 (not at the lowest price), lower only for negative prices
+              - min: "~0"
+                decimals: 2
             series:
               - entity: sensor.ev_energy_prices_data
                 name: Price
@@ -863,6 +865,9 @@ views:
         header:
           show: true
           title: Energy price per hour (€/kWh)
+        yaxis:
+          - min: "~0"
+            decimals: 2
         series:
           - entity: sensor.frank_energie_prices_current_electricity_price_all_in
             show:
@@ -897,7 +902,8 @@ views:
           show: true
           title: Electriciteitsprijzen Vandaag (€/kwh)
         yaxis:
-          - decimals: 2
+          - min: "~0"
+            decimals: 2
         series:
           - entity: sensor.average_electricity_price
             stroke_width: 2

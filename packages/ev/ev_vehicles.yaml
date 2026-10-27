@@ -8,7 +8,7 @@
 #   sensor.ev_car_target_soc        the car's own limit % (state of its charge-limit number)
 #   sensor.ev_car_expected_limit    expected limit rounded/clamped to that number's min/max/step
 #   sensor.ev_car_battery_capacity  kWh
-#   sensor.ev_car_max_power         kW, the lower of car and charger
+#   sensor.ev_car_max_power         kW, the lower of car and charger (a third of the charger for a 1-phase car)
 #   binary_sensor.ev_car_single_phase / ev_car_reports_connected / ev_car_setup_missing
 #   binary_sensor.ev_multiple_cars  more than one slot enabled
 #
@@ -348,7 +348,11 @@ template:
         state: >-
           {% set car = states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_max_power_kw') | float(11) %}
           {% set charger = states('input_number.ev_charger_max_power_kw') | float(11) %}
-          {{ [car, charger] | min }}
+          {# A 1-phase car only gets one of the charger's three phases (16 A x 230 V
+             = 3.7 kW on an 11 kW charger) — otherwise hours needed comes out 3x too
+             low (code review 2026-10-27) #}
+          {% set charger = charger / 3 if is_state('binary_sensor.ev_car_single_phase', 'on') else charger %}
+          {{ ([car, charger] | min) | round(2) }}
 
   # Last own (non-guest) car, to go back to when a guest unplugs. Trigger-based so
   # it survives a restart without another helper.

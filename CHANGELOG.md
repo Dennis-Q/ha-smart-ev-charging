@@ -35,6 +35,26 @@ All notable changes to this project will be documented here.
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
+- **No more 16 A bursts at solar starts and phase switches.** `switch.peblar_ev_charger_charge`
+  wrote `charge_limit_desired` (16 A after any window/force session) on every `turn_on`, also
+  when already on — replacing the setpoint the solar loop had just written until the next 3-s
+  cycle (prod 2026-10-25 09:31: 3.4 kW on one phase; at a 1P→3P step-up up to 11 kW). Now:
+  - `turn_on` does nothing while the switch is on (unless a stop is in progress);
+  - every solar / battery-assist start sets `charge_limit_desired` to its own start value
+    first, because the mA write is refused while the switch is off;
+  - force start sets the A limit to 16 (which sets `charge_limit_desired`) instead of an mA
+    value the charger refuses while off (Mik3yZ 7f84856).
+- **1-phase car: correct hours needed.** `sensor.ev_car_max_power` caps a 1-phase car at a
+  third of the charger (3.7 kW on an 11 kW charger); it used the full 11 kW, so window/cheapest
+  planned about 3× too few hours.
+- **The running cheapest slot is kept.** As the SoC rises and hours needed shrinks, re-sorting
+  by price could drop the slot that was charging for a cheaper later one — charging stopped
+  mid-slot and the rest was bought later (prod 2026-10-13). Now only future slots are dropped.
+- **Max price in the plan:** with the max price limit on, slots above it are no longer selected
+  (or shown green on the chart) and do not count for *sufficient known hours* — they never
+  charged anyway.
+- **Price charts start at 0** (soft minimum; lower only with negative prices). They started at
+  the lowest price, so e.g. €0.28 looked like nothing next to €0.73.
 - **EV notifications switch now covers every EV notification.** `script.ev_notify_dispatch`
   checks `input_boolean.ev_notifications_enabled` itself; 12 automations (force charge, limit
   corrected, charging complete, price data, unit mismatch, …) used to ignore it. New field
