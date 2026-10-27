@@ -76,12 +76,12 @@ views:
           # exposed as state entities.
           - type: markdown
             content: >-
-              <ha-alert alert-type="warning"><strong>EV notify action not
-              configured</strong><br>The <code>input_text.ev_notify_entity_id</code>
-              helper is empty, malformed, or points to a target that doesn't
-              exist. EV notifications fall back to HA persistent notifications
-              until you set a valid target under <strong>Advanced settings →
-              Notifications</strong>.<br><br>Current value:
+              <ha-alert alert-type="warning"><strong>EV notify action
+              invalid</strong><br>The <code>input_text.ev_notify_entity_id</code>
+              helper is not a notify action (<code>notify.&lt;name&gt;</code>), or
+              names a notify entity instead of an action. EV notifications fall
+              back to HA persistent notifications until you fix or empty it under
+              <strong>Advanced settings → Notifications</strong>.<br><br>Current value:
               <code>{{ states('input_text.ev_notify_entity_id') }}</code><br>
               Available targets:
               <code>{{ state_attr('binary_sensor.ev_notify_target_invalid', 'available_notify_entities') | join(', ') or '(none found)' }}</code>

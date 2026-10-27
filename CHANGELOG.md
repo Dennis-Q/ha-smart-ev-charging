@@ -35,6 +35,22 @@ All notable changes to this project will be documented here.
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
+- **EV notifications switch now covers every EV notification.** `script.ev_notify_dispatch`
+  checks `input_boolean.ev_notifications_enabled` itself; 12 automations (force charge, limit
+  corrected, charging complete, price data, unit mismatch, …) used to ignore it. New field
+  `critical: true` sends anyway — only the *charger failed to stop* notification uses it.
+- **A wrong notify action no longer aborts the automation that notifies.** The notify call runs
+  in `script.ev_notify_send`, started without waiting; a typo or removed phone fails only that
+  run (visible in its trace). `continue_on_error` does not cover an action that does not exist.
+  The dispatch also applies its field defaults itself (HA only uses them as UI hints) and runs
+  in parallel, so simultaneous notifications are no longer dropped.
+- **Notify target check:** an empty helper is fine again (notifications go to persistent
+  notifications, as documented) and any `notify.*` action is accepted (`notify.notify`,
+  `notify.telegram`, …). Still flagged: not `notify.<name>`, or the id of a notify *entity*
+  instead of an action.
+- **"EV Charging Complete" only when the SoC rises to the limit** while charging (or within
+  15 minutes after). It also fired when the limit dropped below the SoC — e.g. 75 % after solar
+  and a 60 % window limit — without any charging.
 - **Main view no longer shows Skoda entities**: the Skoda range is gone from *EV Charging
   Status* (it stays on the Elroq view), and *Car Charging On/Off* is now a *Car — start
   charging* button for the active car (`script.ev_car_start_charging`, switch or button).

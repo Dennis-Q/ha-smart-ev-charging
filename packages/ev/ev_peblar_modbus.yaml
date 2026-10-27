@@ -938,12 +938,13 @@ script:
             entity_id: switch.peblar_ev_charger_charge
             state: "on"
         then:
-          # Deliberately NOT gated on input_boolean.ev_notifications_enabled:
-          # a charger that refuses to stop is exactly the event that toggle
-          # must never silence. script.ev_notify_dispatch lives in
-          # ev_generic.yaml — the packages ship together via install.sh.
+          # critical: sent even with EV notifications switched off — a charger
+          # that refuses to stop is exactly the event that toggle must never
+          # silence. script.ev_notify_dispatch lives in ev_notifications.yaml
+          # — the packages ship together via install.sh.
           - service: script.ev_notify_dispatch
             data:
+              critical: true
               title: "EV Charger failed to stop"
               message: >-
                 Charger did not confirm stop after 3 attempts (~30 s) and is

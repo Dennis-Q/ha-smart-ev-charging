@@ -19,8 +19,8 @@
 # This mirrors the layout of hba_notifications.yaml in the sibling HBA project.
 
 automation:
-  # Surfaces a persistent notification when the notify-action helper is
-  # empty / unknown / unavailable / not in 'domain.service' shape.
+  # Surfaces a persistent notification when the notify-action helper is not a
+  # notify action (an empty helper is fine: persistent notifications).
   # Fires on HA start, on state change of the validity binary_sensor, and
   # dismisses itself once the helper is populated correctly.
   - id: ev_notify_target_validation
@@ -48,9 +48,10 @@ automation:
                   title: "EV: Notify action not configured"
                   message: >-
                     The **Notify action** helper
-                    (`input_text.ev_notify_entity_id`) is empty or doesn't
-                    look like a valid action. EV-related notifications fall
-                    back to persistent notifications.
+                    (`input_text.ev_notify_entity_id`) doesn't look like a
+                    notify action (`notify.<name>`), or names a notify entity
+                    instead of an action. EV-related notifications fall back
+                    to persistent notifications until it is fixed or emptied.
 
                     Set it under **EV Charging → Advanced settings →
                     Notifications** to your preferred notify action, for
@@ -113,18 +114,25 @@ automation:
     description: "Notify when EV reaches configured charge limit"
     mode: single
     max_exceeded: silent
+    # Only when the SoC itself rises to the limit while (or just after) charging.
+    # Triggering on "SoC >= expected limit" also fired when the limit dropped
+    # below the SoC — e.g. 75 % after solar, window limit 60 % — without any
+    # charging (code review 2026-10-27). The car stops at its limit and its API
+    # can report the last percent minutes later, hence the 15-minute grace.
     triggers:
-      - trigger: numeric_state
+      - trigger: state
         entity_id: sensor.ev_car_soc
-        above: 99
-      - trigger: template
-        value_template: >-
-          {{
-            states('sensor.ev_car_soc') | int(0)
-            >=
-            states('sensor.ev_expected_charging_limit') | int(101)
-          }}
+        not_from: ["unknown", "unavailable"]
+        not_to: ["unknown", "unavailable"]
     condition:
+      - condition: template
+        value_template: >-
+          {% set limit = states('sensor.ev_expected_charging_limit') | int(101) %}
+          {{ trigger.from_state.state | float(0) < limit <= trigger.to_state.state | float(0) }}
+      - condition: template
+        value_template: >-
+          {{ is_state('binary_sensor.ev_is_charging', 'on')
+             or now() - states.binary_sensor.ev_is_charging.last_changed < timedelta(minutes=15) }}
       - condition: state
         entity_id: binary_sensor.ev_is_connected
         state: "on"
@@ -560,6 +568,10 @@ script:
   # falling back to persistent_notification if the helper is empty.
   ev_notify_dispatch:
     alias: "EV: Notify dispatch"
+    # Several automations can notify at the same moment; with the default
+    # mode (single) all but the first were dropped.
+    mode: parallel
+    max: 20
     fields:
       title:
         description: Notification title
@@ -574,18 +586,51 @@ script:
       actions:
         description: Optional mobile-app action buttons [{action, title}]
         default: []
+      critical:
+        description: >-
+          true = send even with EV notifications switched off (input_boolean.ev_notifications_enabled).
+          Only for faults that toggle must never silence, e.g. a charger that refuses to stop.
+        default: false
     sequence:
-      - action: >-
-          {{ states('input_text.ev_notify_entity_id')
-             if states('input_text.ev_notify_entity_id') | trim
-                not in ['', 'unknown', 'unavailable']
-             else 'notify.persistent_notification' }}
+      # The one place the notifications switch is checked for every EV notification
+      - condition: template
+        value_template: "{{ critical | default(false) in [true, 'true', 'True'] or is_state('input_boolean.ev_notifications_enabled', 'on') }}"
+      # Field defaults are only UI hints — a caller that leaves a field out gets
+      # it undefined, so apply them here.
+      - variables:
+          target: >-
+            {{ states('input_text.ev_notify_entity_id')
+               if states('input_text.ev_notify_entity_id') | trim
+                  not in ['', 'unknown', 'unavailable']
+               else 'notify.persistent_notification' }}
+          payload: >-
+            {% set d = {'priority': priority | default('normal'), 'tag': tag | default('ev_notification'),
+                        'color': color | default('blue')} %}
+            {{ dict(d, actions=actions) if actions | default([]) else d }}
+      # Sent from a separate script, started without waiting: a wrong notify action
+      # (typo, removed phone) then fails only that run — it is logged in its trace —
+      # and never aborts the automation that is notifying. continue_on_error does
+      # not cover an action that does not exist.
+      - action: script.turn_on
+        target: { entity_id: script.ev_notify_send }
+        data:
+          variables:
+            target: "{{ target }}"
+            title: "{{ title | default('EV charging') }}"
+            message: "{{ message | default('') }}"
+            payload: "{{ payload }}"
+
+  # Internal: the actual notify call for ev_notify_dispatch.
+  ev_notify_send:
+    alias: "EV: Notify send (internal)"
+    mode: parallel
+    max: 20
+    sequence:
+      - action: "{{ target }}"
         data:
           title: "{{ title }}"
           message: "{{ message }}"
-          data: >-
-            {% set d = {'priority': priority, 'tag': tag, 'color': color} %}
-            {{ dict(d, actions=actions) if actions else d }}
+          data: "{{ payload }}"
 
   ev_notify_test:
     alias: "EV: Send test notification"

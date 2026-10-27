@@ -201,23 +201,25 @@ template:
 
         #
 
-      # 'on' when input_text.ev_notify_entity_id is empty, malformed, or
-      # points to a modern notify entity. Any notify.* service that is NOT
-      # a registered notify entity is accepted as a legacy service call.
-      # Leave the helper empty to fall back to persistent_notification.
+      # 'on' when input_text.ev_notify_entity_id is set but is not a notify
+      # action: not notify.<name>, or the id of a notify *entity* (e.g.
+      # notify.dennis_mobile — those take notify.send_message, not a call by
+      # name). notify.mobile_app_* and any other notify.* action (notify.notify,
+      # notify.telegram, …) are accepted. Empty is fine: notifications then go
+      # to persistent_notification.
       - name: "EV Notify Target Invalid"
         unique_id: ev_notify_target_invalid
         device_class: problem
         state: >-
           {%- set v = states('input_text.ev_notify_entity_id') | trim -%}
           {%- if v in ['', 'unknown', 'unavailable'] -%}
-            true
-          {%- elif not v.startswith('notify.') -%}
+            false
+          {%- elif not v.startswith('notify.') or v | length <= 7 -%}
             true
           {%- elif v.startswith('notify.mobile_app_') -%}
             false
           {%- else -%}
-            true
+            {{ states[v] is not none }}
           {%- endif -%}
         attributes:
           notify_target: "{{ states('input_text.ev_notify_entity_id') }}"
