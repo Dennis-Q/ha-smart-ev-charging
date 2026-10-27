@@ -1,0 +1,2 @@
+# Keep shell scripts LF on Windows checkouts — a CRLF install.sh fails under bash
+*.sh text eol=lf

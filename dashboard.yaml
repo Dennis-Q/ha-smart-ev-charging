@@ -194,6 +194,7 @@ views:
             name: Battery level
       - type: entities
         title: EV Charging Settings
+        show_header_toggle: false
         entities:
           - entity: input_boolean.ev_manual_override
             name: Manual Override (stop HA)
@@ -244,8 +245,6 @@ views:
             name: Cable Connected (car)
           - entity: sensor.ev_car_soc
             name: Battery Level
-          - entity: sensor.skoda_elroq_range
-            name: Range (left)
           - entity: sensor.ev_car_target_soc
             name: Car Charging Limit
           - entity: sensor.ev_expected_charging_limit
@@ -294,6 +293,7 @@ views:
             name: Effective limit (mA, reg 30113)
       - type: entities
         title: Charge Control
+        show_header_toggle: false
         entities:
           - entity: switch.peblar_ev_charger_force_single_phase
             name: Single Phase Mode
@@ -304,8 +304,14 @@ views:
           - entity: switch.peblar_ev_charger_charge
             name: Peblar Charger On/Off
           - type: divider
-          - entity: switch.skoda_elroq_charging
-            name: Car Charging On/Off
+          # Active car's start entity (switch or button, Cars view); no-op without one
+          - type: button
+            name: Car — start charging
+            icon: mdi:car-electric
+            action_name: Start
+            tap_action:
+              action: perform-action
+              perform_action: script.ev_car_start_charging
       - type: entities
         title: Window Charging
         entities:
@@ -608,6 +614,9 @@ views:
             filter:
               include:
                 - entity_id: "automation.ev_*notif*"
+                - entity_id: automation.ev_manual_override_reminder
+                - entity_id: automation.ev_which_car_at_plug_in
+                - entity_id: automation.ev_phase_check_1_phase_car_while_a_3_phase_car_is_selected
             sort:
               method: friendly_name
       - type: vertical-stack

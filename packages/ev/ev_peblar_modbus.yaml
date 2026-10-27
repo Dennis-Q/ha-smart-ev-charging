@@ -769,9 +769,11 @@ template:
       # Drop-in equivalent of the official integration's
       # number.peblar_ev_charger_charge_limit — 6-16 A integer slider.
       #
-      # Reads back the EFFECTIVE limit from
-      # sensor.peblar_ev_charger_charge_current_limit_actual (register 30113 —
-      # lowest of all limiting sources) so the slider reflects what the car sees.
+      # Reads back the setpoint from
+      # sensor.peblar_ev_charger_charge_current_limit_raw (register 40000), in
+      # amps with 2 decimals so the solar/battery-assist regulation stays visible
+      # (setting it still takes whole amps). The effective limit (register 30113, lowest of all limiting
+      # sources) is sensor.peblar_ev_charger_charge_current_limit_actual.
       #
       # When charging is off (register 40000 = 0), reads from
       # input_number.peblar_ev_charger_charge_limit_desired so the configured
@@ -785,7 +787,8 @@ template:
         state: >
           {% set reg = states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) %}
           {% if reg > 0 %}
-            {{ [[reg / 1000 | round(0) | int, 6] | max, 16] | min }}
+            {# Brackets: a filter binds tighter than '/' — `reg / 1000 | round` rounded the 1000 #}
+            {{ [[(reg / 1000) | round(2), 6] | max, 16] | min }}
           {% else %}
             {{ [[states('input_number.peblar_ev_charger_charge_limit_desired') | float(6), 6] | max, 16] | min }}
           {% endif %}

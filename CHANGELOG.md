@@ -35,6 +35,20 @@ All notable changes to this project will be documented here.
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
+- **Main view no longer shows Skoda entities**: the Skoda range is gone from *EV Charging
+  Status* (it stays on the Elroq view), and *Car Charging On/Off* is now a *Car — start
+  charging* button for the active car (`script.ev_car_start_charging`, switch or button).
+- `number.peblar_ev_charger_charge_limit`: `reg / 1000 | round` rounded the 1000, not the result,
+  so the decimals were accidental. Now deliberately 2 decimals (e.g. 6.35 A) so the solar
+  regulation stays visible; setting it still takes whole amps. Comment now names the register it
+  really reads (40000).
+- `dashboard.yaml`: header toggles off on *EV Charging Settings* and *Charge Control* — one tap
+  switched every boolean on the card (manual override, permanent force, all modes) at once.
+- Notification automations list (Advanced settings) now also shows the manual-override
+  reminder, *which car?* and the phase check.
+- `.gitattributes` keeps `install.sh` LF on Windows checkouts.
+- README: `sensor.p1_meter_power` is required (defined by HBA, template for installs without
+  it); `script.ev_select_car` is the way for automations to choose a car.
 - **`sensor.ev_expected_charging_limit` is never empty** (from Mik3yZ, 6789b4c): it follows
   `sensor.ev_charging_mode`; with no active mode it is the car's own limit, so — as before —
   nothing is corrected then. Ends the recurring "invalid sensor state" error. New attribute

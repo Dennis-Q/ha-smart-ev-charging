@@ -555,7 +555,10 @@ automation:
             data: { option: "{{ active }}" }
 
   # A car picked in the selector by a person (not by the sync above, whose
-  # changes carry its context as parent) becomes the active slot.
+  # changes carry its context as parent) becomes the active slot. Changes by
+  # any automation or script are ignored on purpose: set_options briefly selects
+  # the first car, and comparing with the active slot would make that stick.
+  # Automations choose a car with script.ev_select_car (slot: 1-3).
   - id: ev_active_car_selected
     alias: "EV: Active car selected"
     mode: queued

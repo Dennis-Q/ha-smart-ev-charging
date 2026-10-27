@@ -11,7 +11,24 @@ Needs work for public use, but might be done later.
 ## Requirements
 Probably incomplete but it's a start:
 - Solar integration (for solar charging, entities that show current power-use)
-- P1-meter (preferably with quick updates)
+- P1-meter (preferably with quick updates): `sensor.electricity_meter_power_consumption` and
+  `sensor.electricity_meter_power_production` in W
+- `sensor.p1_meter_power` — net grid power in W (positive = importing). Used by the
+  *unexpected grid charging* check and its notification. The
+  [Home Battery Assistant (HBA)](https://github.com/Dennis-Q/marstek-venus-rs485-hba) defines
+  it (`custom_hba_config.yaml`); without HBA, add a template sensor yourself:
+
+  ```yaml
+  template:
+    - sensor:
+        - name: "P1 Meter Power"
+          unique_id: p1_meter_power
+          unit_of_measurement: "W"
+          device_class: power
+          state: >-
+            {{ states('sensor.electricity_meter_power_consumption') | float(0)
+               - states('sensor.electricity_meter_power_production') | float(0) }}
+  ```
 - Peblar EV charger with **Modbus TCP enabled** (see below)
 - Frank Energie integration (default price source) or Entso-e — see `input_text.ev_price_entity`
 - A car integration with at least a battery level (SoC) sensor — see "Car entities" below
@@ -42,6 +59,11 @@ without a SoC sensor) gets no window charging, only force and solar; selecting o
 dashboard or in the notification — turns on a one-time force charge (turning it off and solar
 on is up to the user). When a guest unplugs, the last own car becomes active again. A **phase check** asks — never switches — when only charger phase 1 draws power
 while a 3-phase car is selected.
+
+To choose a car from your own automation or script, call `script.ev_select_car` with
+`slot: 1|2|3`. Setting `input_select.ev_active_car` from an automation is ignored on purpose:
+the selector's options are rewritten automatically, which briefly selects the first car, so
+only changes made by a person (dashboard, voice) are taken from it.
 
 With a **MySkoda** car (`sensor.skoda_<car>_battery_percentage`) car 1 is filled in at start
 while its SoC field is empty, so an existing install keeps working without setup.
