@@ -3,6 +3,8 @@
 ## Input helpers
 
 input_number:
+  # Planning only: hours needed for window / cheapest charging (sensor.ev_car_max_power).
+  # It does not limit the charger -- force, window and cheapest always set 16 A.
   ev_charger_max_power_kw:
     name: "EV Charger Maximum Power"
     unit_of_measurement: "kW"
@@ -194,9 +196,14 @@ template:
       - name: "EV is Charging"
         unique_id: ev_is_charging
         state: "{{ is_state('sensor.peblar_ev_charger_state', 'charging') }}"
+      # Unavailable (not off) while the charger state is unknown: at every HA restart
+      # the Modbus registers are unreadable for ~30 s, and 'off' then 'on' looked like
+      # an unplug + plug-in ("which car?" notification, plug-in triggers; prod 2026-10-25,
+      # eight restarts). Triggers on to: "off" / from: "off" ignore unavailable.
       - name: "EV is Connected"
         unique_id: ev_is_connected
-        state: "{{ not is_state('sensor.peblar_ev_charger_state', 'no_ev_connected') and not is_state('sensor.peblar_ev_charger_state', 'unknown') and not is_state('sensor.peblar_ev_charger_state', 'unavailable') }}"
+        availability: "{{ states('sensor.peblar_ev_charger_state') not in ['unknown', 'unavailable'] }}"
+        state: "{{ not is_state('sensor.peblar_ev_charger_state', 'no_ev_connected') }}"
         # state: "{{ is_state('sensor.peblar_ev_charger_state', 'evcharging') or is_state('sensor.peblar_ev_charger_state', 'suspended') }}"
 
         #

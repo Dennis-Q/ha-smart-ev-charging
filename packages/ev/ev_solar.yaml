@@ -117,6 +117,14 @@ template:
         unit_of_measurement: "W"
         device_class: power
         state_class: measurement
+        # Unavailable without both P1 readings. Read as 0 they left excess = charger power
+        # - buffer: the loop held its rate whatever the house did, and with a negative
+        # buffer it ramped up to 16 A from the grid (code review 2026-10-27). Unavailable,
+        # the smoothed sensor follows, the amp sensors read 0, phase mode becomes 'stop'
+        # and ev_stop ends the session after 2 minutes.
+        availability: >-
+          {{ states('sensor.electricity_meter_power_consumption') | is_number
+             and states('sensor.electricity_meter_power_production') | is_number }}
         state: >
           {% set grid_import = states('sensor.electricity_meter_power_consumption') | float(0) %}
           {% set grid_export = states('sensor.electricity_meter_power_production') | float(0) %}
@@ -267,6 +275,10 @@ template:
       # A 1-phase car (e.g. Dacia Spring) only draws on charger L1: it always gets
       # single_phase, so the whole surplus goes to that phase instead of a third of
       # it (Mik3yZ, 7f84856; per car in ev_vehicles.yaml).
+      # In 3-phase below the 6 A minimum (between the two thresholds the hysteresis kept
+      # 3-phase, importing up to ~640 W at the defaults): single_phase once
+      # binary_sensor.ev_three_phase_below_minimum has been on for 10 minutes, so short
+      # dips do not add phase switches (code review 2026-10-27).
       - name: "EV Optimal Charging Phase Mode"
         unique_id: ev_optimal_charging_phase_mode
           #  {% set excess = states('sensor.ev_grid_excess_power') | float(0) %}
@@ -282,16 +294,18 @@ template:
             stop
           {% elif is_state('binary_sensor.ev_car_single_phase', 'on') %}
             single_phase
-          {% elif excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
-            three_phase
-          {% elif excess <= switch_to_1phase_threshold %}
-            single_phase
           {% else %}
-            {% if current_mode == 'on' %}
-              single_phase
+            {% set current = 'single_phase' if current_mode == 'on' else 'three_phase' %}
+            {% if excess >= switch_to_3phase_threshold and three_phase_amps >= 6 %}
+              {% set wanted = 'three_phase' %}
+            {% elif excess <= switch_to_1phase_threshold %}
+              {% set wanted = 'single_phase' %}
+            {% elif is_state('binary_sensor.ev_three_phase_below_minimum', 'on') %}
+              {% set wanted = 'single_phase' %}
             {% else %}
-              three_phase
+              {% set wanted = current %}
             {% endif %}
+            {{ wanted }}
           {% endif %}
 
   - binary_sensor:
@@ -304,6 +318,19 @@ template:
       # not "is there enough to charge". The actual stop/phase decision is
       # handled by sensor.ev_optimal_charging_phase_mode using
       # ev_solar_min_charge_threshold_w (1380 W).
+      # Charging 3-phase while the surplus cannot carry 6 A on three phases (between
+      # the two phase thresholds the hysteresis keeps 3-phase; the loop then holds
+      # 6 A and imports the difference). On after 10 minutes: short dips do not switch
+      # phases. Read by sensor.ev_optimal_charging_phase_mode.
+      - name: "EV Three Phase Below Minimum"
+        unique_id: ev_three_phase_below_minimum
+        icon: mdi:transmission-tower-import
+        state: >-
+          {{ is_state('switch.peblar_ev_charger_charge', 'on')
+             and is_state('switch.peblar_ev_charger_force_single_phase', 'off')
+             and states('sensor.ev_available_charging_amps_three_phase') | int(0) < 6 }}
+        delay_on: "00:10:00"
+
       - name: "EV Solar Viable"
         unique_id: ev_solar_viable
         state: >
@@ -389,17 +416,18 @@ template:
             {%- set e = states('input_text.ev_home_battery_power_entity') | trim -%}
             {{ state_attr(e, 'unit_of_measurement') if e not in ['', 'unknown', 'unavailable', 'none'] else 'not set' }}
 
-      # ON when either P1 sensor does not report in W.
-      # ev_grid_excess_power auto-scales kW → W, but other unexpected units
-      # (e.g. Wh, kWh, or unavailable) will still produce wrong results.
-      # Use this sensor to drive a dashboard warning banner.
+      # ON when either P1 sensor reports a unit other than W. ev_grid_excess_power reads
+      # them as W without scaling, so kW gives an excess 1000x too small.
+      # An unavailable sensor has no unit: not a mismatch (no banner on every P1 blip).
+      # Drives a dashboard warning banner.
       - name: "EV P1 Unit Mismatch"
         unique_id: ev_p1_unit_mismatch
         device_class: problem
         state: >-
           {%- set unit_import = state_attr('sensor.electricity_meter_power_consumption', 'unit_of_measurement') -%}
           {%- set unit_export = state_attr('sensor.electricity_meter_power_production', 'unit_of_measurement') -%}
-          {{ unit_import != 'W' or unit_export != 'W' }}
+          {{ (unit_import is not none and unit_import != 'W')
+             or (unit_export is not none and unit_export != 'W') }}
         attributes:
           unit_consumption: "{{ state_attr('sensor.electricity_meter_power_consumption', 'unit_of_measurement') }}"
           unit_production: "{{ state_attr('sensor.electricity_meter_power_production', 'unit_of_measurement') }}"
@@ -496,6 +524,22 @@ automation:
           - "battery_assist"
         for: "00:02:00"
         id: ev_mode_entry
+      # Start when the phase mode is already steady. The ev_1p/ev_3p triggers only fire
+      # on a CHANGE of phase mode, so plugging in on a steady sunny afternoon, turning
+      # solar charging on, or turning manual override off never started the charger
+      # (code review 2026-10-27; the solar side of the 2026-07-26 plug-in fix in
+      # ev_generic). These go through the ev_1p / ev_3p branches below when the charger
+      # is off and the phase mode is single_phase / three_phase; ev_mode_entry does too.
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        to: "on"
+        for: "00:00:30"
+        id: solar_resume
+      - trigger: state
+        entity_id: input_boolean.ev_manual_override
+        to: "off"
+        for: "00:00:30"
+        id: solar_resume
       # Fast start for battery_assist: skips the 2-4 min phase-mode trigger delays.
       # Fires 30 s after mode entry so P1/battery readings have stabilised.
       - trigger: state
@@ -586,10 +630,24 @@ automation:
           # keeps running at the 1-phase floor instead of stopping — import is
           # ~0 there, and ev_stop still gets the final say 2 minutes later.
           - conditions:
-              - condition: trigger
-                id:
-                  - ev_1p
-                  - leave_3p
+              - condition: or
+                conditions:
+                  - condition: trigger
+                    id:
+                      - ev_1p
+                      - leave_3p
+                  - condition: and
+                    conditions:
+                      - condition: trigger
+                        id:
+                          - ev_mode_entry
+                          - solar_resume
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "single_phase"
+                      - condition: state
+                        entity_id: switch.peblar_ev_charger_charge
+                        state: "off"
             sequence:
               - action: number.set_value
                 target:
@@ -615,8 +673,22 @@ automation:
                   entity_id: switch.peblar_ev_charger_charge
           # 3-phase
           - conditions:
-              - condition: trigger
-                id: ev_3p
+              - condition: or
+                conditions:
+                  - condition: trigger
+                    id: ev_3p
+                  - condition: and
+                    conditions:
+                      - condition: trigger
+                        id:
+                          - ev_mode_entry
+                          - solar_resume
+                      - condition: state
+                        entity_id: sensor.ev_optimal_charging_phase_mode
+                        state: "three_phase"
+                      - condition: state
+                        entity_id: switch.peblar_ev_charger_charge
+                        state: "off"
             sequence:
               - action: number.set_value # start with a safe 6 A (6000 mA) when switching to 3P
                 target:
@@ -789,7 +861,10 @@ automation:
   - id: ev_solar_dynamic_power_control
     alias: "EV Solar Dynamic Power Control"
     description: "Adapt power control quickly"
-    # mode: silent
+    # A run that takes longer than 3 s (an unreachable charger: Modbus timeout 20 s)
+    # is skipped silently instead of logging "Already running" every 3 s.
+    mode: single
+    max_exceeded: silent
 
     triggers:
       - trigger: time_pattern

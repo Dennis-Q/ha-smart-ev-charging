@@ -6,7 +6,7 @@
 #   • ev_notify_target_validation — persistent alert when the notify entity_id is invalid
 #   • ev_charging_complete        — car reached its configured charge limit
 #   • ev_charger_error            — charger entered an unexpected state
-#   • ev_notify_charger_alert     — Peblar warning/error codes, and when they clear
+#   • ev_notify_charger_alert / _cleared — Peblar warning/error codes (1 min), and when they clear
 #   • ev_notify_unexpected_charging        — charger drawing power with the switch off
 #   • ev_notify_manual_override_reminder   — manual override left on
 #   • ev_notify_unexpected_grid_charging / _resolved — solar session pulling from the grid
@@ -176,23 +176,22 @@ automation:
           priority: high
 
   # Notify when Peblar charger has active warnings or errors (and when cleared).
+  # 1 minute before notifying: a 10-second warning (prod 2026-10-27 05:59:45, code
+  # 10000) sent "Alert" and "Cleared" ten seconds apart. "Cleared" only follows an
+  # alert that was actually sent (same pattern as HBA's resolved notifications).
   - id: ev_notify_charger_alert
     alias: "EV Charger Alert Notification"
-    description: "Notify on charger warning/error codes; send cleared notification when resolved"
+    description: "Notify on charger warning/error codes active for 1 minute"
     mode: single
     triggers:
       - trigger: state
         entity_id:
           - binary_sensor.peblar_ev_charger_active_warnings
           - binary_sensor.peblar_ev_charger_active_errors
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
+        to: "on"
+        for: "00:01:00"
     actions:
       - variables:
-          has_alert: >-
-            {{ is_state('binary_sensor.peblar_ev_charger_active_warnings', 'on') or is_state('binary_sensor.peblar_ev_charger_active_errors', 'on') }}
           active_codes: >-
             {%- set ns = namespace(codes=[]) -%}
             {%- for i in [1,2,3,4,5] -%}
@@ -204,26 +203,43 @@ automation:
               {%- if v > 0 -%}{%- set ns.codes = ns.codes + ['Warning ' ~ v] -%}{%- endif -%}
             {%- endfor -%}
             {{ ns.codes | join(', ') }}
-      - choose:
-          - conditions:
-              - condition: template
-                value_template: "{{ has_alert }}"
-            sequence:
-              - action: script.ev_notify_dispatch
-                data:
-                  title: "EV Charger Alert"
-                  message: "Active: {{ active_codes }}. Check the charger web interface for details."
-                  tag: ev_charger_alert
-                  color: red
-                  priority: high
-        default:
-          - action: script.ev_notify_dispatch
-            data:
-              title: "EV Charger Alert Cleared"
-              message: "All charger warnings and errors have been resolved."
-              tag: ev_charger_alert
-              color: green
-              priority: normal
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV Charger Alert"
+          message: "Active: {{ active_codes }}. Check the charger web interface for details."
+          tag: ev_charger_alert
+          color: red
+          priority: high
+
+  - id: ev_notify_charger_alert_cleared
+    alias: "EV Charger Alert Cleared Notification"
+    description: "Notify when all charger warnings and errors are gone, after an alert was sent"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id:
+          - binary_sensor.peblar_ev_charger_active_warnings
+          - binary_sensor.peblar_ev_charger_active_errors
+        to: "off"
+    conditions:
+      - condition: state
+        entity_id:
+          - binary_sensor.peblar_ev_charger_active_warnings
+          - binary_sensor.peblar_ev_charger_active_errors
+        state: "off"
+      - condition: template
+        value_template: >-
+          {% set raised = state_attr('automation.ev_charger_alert_notification', 'last_triggered') %}
+          {% set mine = this.attributes.last_triggered if this is defined and this.attributes is defined else none %}
+          {{ raised is not none and (mine is none or raised > mine) }}
+    actions:
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV Charger Alert Cleared"
+          message: "All charger warnings and errors have been resolved."
+          tag: ev_charger_alert
+          color: green
+          priority: normal
 
   # Notify when the charger is drawing power while the charge switch is off.
   # Catches cases where another control source (e.g. a stuck REST command) is
@@ -237,18 +253,15 @@ automation:
     description: "Notify when charger power > 0 W for 3 min with charge switch off"
     mode: single
     max_exceeded: silent
+    # Both together for 3 minutes. A numeric_state trigger on the power only fired
+    # when it crossed 0 W, so a charger that kept drawing after the switch went off --
+    # the stuck case this is for -- was never reported (code review 2026-10-27).
     triggers:
-      - trigger: numeric_state
-        entity_id: sensor.peblar_ev_charger_power
-        above: 0
+      - trigger: template
+        value_template: >-
+          {{ states('sensor.peblar_ev_charger_power') | float(0) > 0
+             and is_state('switch.peblar_ev_charger_charge', 'off') }}
         for: "00:03:00"
-    conditions:
-      - condition: state
-        entity_id: switch.peblar_ev_charger_charge
-        state: "off"
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - action: script.ev_notify_dispatch
         data:

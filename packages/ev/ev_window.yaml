@@ -240,7 +240,13 @@ template:
             {%- set hours_needed = states('sensor.ev_hours_needed_for_charging') | float(0) -%}
             {%- set ws = as_timestamp(states('sensor.ev_charging_window_start_time'), 0) -%}
             {%- set we = as_timestamp(states('sensor.ev_charging_window_end_time'), 0) -%}
-            {%- if slots | length == 0 or hours_needed <= 0 or ws == 0 or we == 0 -%}
+            {%- if not states('sensor.ev_hours_needed_for_charging') | is_number
+                   and not state_attr('sensor.ev_active_car', 'guest') in [true, 'true', 'True'] -%}
+              {#- No SoC (car integration loading or down): keep the previous plan's
+                  slots that have not ended, instead of planning from 0 % -#}
+              {%- set prev = state_attr('sensor.ev_cheapest_hours_in_window', 'slots') or [] -%}
+              {{ prev | selectattr('ts', '>', as_timestamp(now()) - step) | list | to_json }}
+            {%- elif slots | length == 0 or hours_needed <= 0 or ws == 0 or we == 0 -%}
               []
             {%- else -%}
               {#- Current slot counts as a candidate (it may already be charging) -#}
@@ -371,6 +377,12 @@ template:
         unique_id: ev_hours_needed_for_charging
         unit_of_measurement: "h"
         icon: mdi:clock-fast
+        # Unavailable without a SoC. Read as 0 % it planned a full charge: at every HA
+        # restart (car integration still loading) hours needed jumped to 53.6 h, the
+        # whole window was selected and the mode went to 'cheapest' for a moment (prod
+        # 2026-10-26 16:14:54); a longer car-API outage would charge at 16 A in
+        # expensive hours. The cheapest selection keeps its plan meanwhile.
+        availability: "{{ states('sensor.ev_car_soc') | is_number }}"
         state: >
           {% set current_battery = states('sensor.ev_car_soc') | float(0) %}
           {% set target_battery = states('input_number.ev_charging_limit_window') | float(0) %}

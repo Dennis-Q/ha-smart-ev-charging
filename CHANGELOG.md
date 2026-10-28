@@ -35,6 +35,30 @@ All notable changes to this project will be documented here.
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
+- **Own code review (2026-10-28), after Mik3yZ's round:**
+  - **Solar starts when the surplus is already there.** Plugging in on a steady sunny afternoon,
+    turning solar on, or turning manual override off never started the charger: the start only
+    reacted to a *change* of phase mode. Now also on plug-in (30 s), manual override off and
+    solar mode entry, when the charger is off and the phase mode asks for 1- or 3-phase.
+  - **No SoC = no plan, instead of planning from 0 %.** `sensor.ev_hours_needed_for_charging`
+    is unavailable without a SoC; the cheapest selection keeps its plan meanwhile. At every HA
+    restart hours needed jumped to 53.6 h and the mode went to `cheapest` for a moment (prod
+    2026-10-26); a longer car-API outage would have charged at 16 A in expensive hours.
+  - **P1 meter unavailable stops solar charging** instead of holding (buffer 0) or ramping to
+    16 A from the grid (negative buffer): `sensor.ev_grid_excess_power` is unavailable without
+    both P1 readings, so phase mode goes to `stop`.
+  - **No long import in 3-phase below the 6 A minimum** (between the two thresholds, up to
+    ~640 W at the defaults): down to 1-phase after 10 minutes there
+    (`binary_sensor.ev_three_phase_below_minimum`, read by `sensor.ev_optimal_charging_phase_mode`).
+  - **Charger alert after 1 minute**, and "cleared" only after an alert was sent (prod
+    2026-10-27: a 10-second warning sent both). New automation `ev_notify_charger_alert_cleared`.
+  - **Unexpected-charging notification** also when the charger keeps drawing after the switch
+    went off (the numeric_state trigger only fired on crossing 0 W).
+  - **`binary_sensor.ev_is_connected` is unavailable, not off, while the charger state is
+    unknown** — every HA restart looked like unplug + plug-in ("which car?", plug-in triggers).
+  - Solar control loop: `max_exceeded: silent` (no "Already running" flood with an unreachable
+    charger); P1 unit check no longer on while P1 is unavailable, comment corrected (no kW
+    scaling); charger max power documented as planning-only.
 - **No more 16 A bursts at solar starts and phase switches.** `switch.peblar_ev_charger_charge`
   wrote `charge_limit_desired` (16 A after any window/force session) on every `turn_on`, also
   when already on — replacing the setpoint the solar loop had just written until the next 3-s
