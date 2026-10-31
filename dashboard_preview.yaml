@@ -694,6 +694,12 @@ views:
                 name: Battery assist active entity
               - entity: input_text.ev_home_battery_priority_entity
                 name: Home battery priority entity
+              - entity: input_text.ev_home_battery_plan_entity
+                name: Home battery plan entity
+              - entity: input_boolean.ev_follow_hba
+                name: Follow HBA
+              - entity: binary_sensor.ev_following_hba
+                name: Following HBA (status)
               - type: divider
               - entity: binary_sensor.ev_solar_viable
                 name: Solar viable (status)

@@ -84,6 +84,16 @@ input_text:
     icon: mdi:home-battery-outline
     max: 100
 
+  # ev_home_battery_plan_entity
+  #   A binary_sensor published by your home battery system that is 'on' while
+  #   it is in charge of the car, with attribute ev_mode: grid, battery or none.
+  #   Only used while input_boolean.ev_follow_hba is on. Leave empty if unused.
+  #   Example (HBA): binary_sensor.hba_ev_plan_active
+  ev_home_battery_plan_entity:
+    name: "EV Home battery plan entity"
+    icon: mdi:calendar-clock
+    max: 100
+
 ## Templates & sensors
 
 sensor:

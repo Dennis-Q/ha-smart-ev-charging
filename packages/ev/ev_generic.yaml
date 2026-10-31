@@ -70,6 +70,12 @@ input_boolean:
     name: "EV Manual Override"
     icon: mdi:hand-back-left
 
+  # Your switch to let a home battery system (HBA) decide when the car charges, see
+  # input_text.ev_home_battery_plan_entity. Off disconnects it; everything else keeps working.
+  ev_follow_hba:
+    name: "EV Follow HBA"
+    icon: mdi:home-battery-outline
+
   ev_force_charge_once:
     name: "EV Force Charge (One-Time)"
     icon: mdi:lightning-bolt
@@ -263,6 +269,19 @@ template:
             {% endif %}
           {% endif %}
 
+      # 'on' when the home battery system is in charge of the car: your switch is on and its plan
+      # entity is on. Off, empty, missing or stale there = this project's own rules. Force charge
+      # always wins. For now this is information only: no charging mode reads it.
+      - name: "EV Following HBA"
+        unique_id: ev_following_hba
+        icon: mdi:home-battery-outline
+        state: >-
+          {% set e = states('input_text.ev_home_battery_plan_entity') | trim %}
+          {{ is_state('input_boolean.ev_follow_hba', 'on')
+             and e not in ['', 'unknown', 'unavailable', 'none'] and is_state(e, 'on') }}
+        attributes:
+          ev_mode: "{{ state_attr(states('input_text.ev_home_battery_plan_entity') | trim, 'ev_mode') or 'none' }}"
+
   - sensor:
       # Determine expected charging limit (the car's charge limit is corrected to it).
       # Follows sensor.ev_charging_mode while a mode is active. With no active mode it
@@ -361,6 +380,7 @@ automation:
             - input_text.ev_home_battery_power_entity
             - input_text.ev_home_battery_assist_active_entity
             - input_text.ev_home_battery_priority_entity
+            - input_text.ev_home_battery_plan_entity
           sequence:
             - if:
                 - condition: template

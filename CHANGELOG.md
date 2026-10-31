@@ -5,6 +5,9 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **First step towards HBA deciding for the car.** New switch `input_boolean.ev_follow_hba` (off by
+  default), field `input_text.ev_home_battery_plan_entity` and status `binary_sensor.ev_following_hba`.
+  Information only for now: charging does not change.
 - **Up to three cars** instead of the hard-wired Skoda Elroq (with Mik3yZ). New package
   `packages/ev/ev_vehicles.yaml` and a **Cars** view. Per car: name, battery capacity, max charge
   power, *charges on 1 phase*, and the entities of its integration — SoC sensor, charge-limit

@@ -122,6 +122,7 @@ Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/mars
 | `ev_home_battery_power_entity` | `sensor.hba_total_battery_power` | Solar mode counts battery charging as surplus for the car; battery discharge (e.g. selling) never counts as solar |
 | `ev_home_battery_assist_active_entity` | `binary_sensor.hba_battery_assist_active` | HBA *Timed EV charge*: the car charges from the batteries (battery_assist mode) |
 | `ev_home_battery_priority_entity` | `binary_sensor.hba_batteries_before_ev` | HBA *Charge alongside EV* below its *Batteries first* reserve: the batteries get the solar surplus first, the car what is left |
+| `ev_home_battery_plan_entity` | `binary_sensor.hba_ev_plan_active` | HBA *Planned* is in charge of the car while *EV Follow HBA* is on. Shown as `binary_sensor.ev_following_hba`; no charging mode acts on it yet. |
 
 In the other direction HBA reads `binary_sensor.ev_is_charging` and
 `binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). For HBA's per-phase
