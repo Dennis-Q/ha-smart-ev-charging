@@ -334,8 +334,8 @@ automation:
         data:
           title: "EV Unexpected Charging"
           message: >-
-            {% if mode == 'none' %}
-              Charger running at {{ power }} W but mode is 'none' — nothing authorised charging.
+            {% if mode in ['none', 'hba_wait'] %}
+              Charger running at {{ power }} W but mode is '{{ mode }}' — nothing authorised charging.
             {% else %}
               Charger pulling {{ power }} W with {{ grid }} W grid import while in {{ mode }} mode.
             {% endif %}
@@ -348,8 +348,8 @@ automation:
           notification_id: ev_unexpected_grid_charging
           title: "EV Unexpected Charging"
           message: >-
-            {% if mode == 'none' %}
-              Charger running at {{ power }} W but mode is 'none' — nothing authorised charging.
+            {% if mode in ['none', 'hba_wait'] %}
+              Charger running at {{ power }} W but mode is '{{ mode }}' — nothing authorised charging.
             {% else %}
               Charger pulling {{ power }} W with {{ grid }} W grid import while in {{ mode }} mode.
             {% endif %}

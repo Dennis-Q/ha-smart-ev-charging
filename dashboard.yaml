@@ -233,6 +233,8 @@ views:
             name: Solar Charging Limit (%)
           - entity: input_number.ev_charging_limit_window
             name: Window Charging Limit (%)
+          - entity: input_number.ev_charging_limit_hba
+            name: HBA Charging Limit (%)
           - entity: input_number.ev_charging_limit_force
             name: Force Charging Limit (%)
           - type: divider
