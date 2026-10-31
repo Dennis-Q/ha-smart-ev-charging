@@ -27,15 +27,6 @@ input_number:
     step: 10
     icon: mdi:clock-star-four-points
 
-  # Target while a home battery planner (HBA) charges the car from the grid. Solar has its own limit.
-  ev_charging_limit_hba:
-    name: "EV Charging Limit HBA"
-    unit_of_measurement: "%"
-    min: 50
-    max: 100
-    step: 10
-    icon: mdi:home-battery-outline
-
   # Upper price limit for window and cheapest-hours charging, compared against
   # the current slot of sensor.ev_energy_prices_data — so it is all-in or
   # market price depending on input_text.ev_price_entity. Only applied when

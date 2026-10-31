@@ -5,10 +5,23 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
-- **HBA can decide for the car.** New switch `input_boolean.ev_follow_hba` (off by default), field
-  `input_text.ev_home_battery_plan_entity` and status `binary_sensor.ev_following_hba`. While following,
-  HBA's plan replaces window and cheapest: mode `hba_grid` or `hba_wait`, limit `ev_charging_limit_hba`.
-  Solar, battery assist and force keep working. `sensor.ev_plan_input` tells HBA what the car needs.
+- **An assistant can decide for the car (HBA: Planned, Timed EV charge).** New switch
+  `input_boolean.ev_follow_assisted` (off by default), field `input_text.ev_assisted_entity` (filled in
+  by Apply defaults when HBA is installed) and status `binary_sensor.ev_following_assisted`. While
+  following, that entity's attribute `ev_mode` (force, battery, wait) gives mode `assisted_force`,
+  `assisted_battery` or `assisted_wait`; window and cheapest wait, and available solar runs as
+  normal solar mode whatever its switch says (`sensor.ev_charging_mode_display` shows `assisted_solar`).
+  Force always wins. `ev_limit` sets the car's limit, and `assisted_force` stops at the charger when
+  the SoC gets there, so a car without a charge-limit entity works too. `sensor.ev_car_info` tells
+  the assistant about the active car.
+- **Warning above the max price.** When the assistant plans grid charging above the max price you get
+  Charge / Skip after plug-in or a new plan and again in the evening (`input_datetime.ev_assisted_reminder`,
+  default 20:00). No answer = it charges.
+
+### Changed (update both projects together)
+- Mode `battery_assist` is now `assisted_battery`. **`input_boolean.ev_battery_assist_charging` and
+  `input_text.ev_home_battery_assist_active_entity` are gone**, replaced by the switch and field above.
+  If you use HBA's Timed EV charge: run Apply defaults or fill in the field, and turn on Follow assisted.
 - **Up to three cars** instead of the hard-wired Skoda Elroq (with Mik3yZ). New package
   `packages/ev/ev_vehicles.yaml` and a **Cars** view. Per car: name, battery capacity, max charge
   power, *charges on 1 phase*, and the entities of its integration — SoC sensor, charge-limit

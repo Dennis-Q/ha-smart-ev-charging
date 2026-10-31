@@ -11,6 +11,7 @@
 #   • ev_notify_manual_override_reminder   — manual override left on
 #   • ev_notify_unexpected_grid_charging / _resolved — solar session pulling from the grid
 #   • ev_power_entity_unit_mismatch        — configured power entity reports kW, not W
+#   • ev_notify_assisted_over_price        — an assistant plans grid charging above the max price (Charge / Skip)
 #
 # Helpers and template sensors these depend on stay with their domain:
 #   input_boolean.ev_notifications_enabled, input_text.ev_notify_entity_id and
@@ -301,13 +302,13 @@ automation:
           color: orange
           priority: normal
 
-  # Alert: EV charging when mode is 'none', or grid draw during solar/battery_assist.
+  # Alert: EV charging when mode is 'none', or grid draw during solar/assisted_battery.
   # binary_sensor.ev_unexpected_grid_charging already gates on manual_override and
   # delay_on 5 min, so this automation fires only on genuine sustained problems.
   # Push + persistent_notification on start; push-only on resolve (HA bell stays
   # until the user manually dismisses it — intentional for overnight visibility).
 
-  # Alert: EV charging when mode is 'none', or grid draw during solar/battery_assist.
+  # Alert: EV charging when mode is 'none', or grid draw during solar/assisted_battery.
   # binary_sensor.ev_unexpected_grid_charging already gates on manual_override and
   # delay_on 5 min, so this automation fires only on genuine sustained problems.
   # Push + persistent_notification on start; push-only on resolve (HA bell stays
@@ -334,7 +335,7 @@ automation:
         data:
           title: "EV Unexpected Charging"
           message: >-
-            {% if mode in ['none', 'hba_wait'] %}
+            {% if mode in ['none', 'assisted_wait'] %}
               Charger running at {{ power }} W but mode is '{{ mode }}' — nothing authorised charging.
             {% else %}
               Charger pulling {{ power }} W with {{ grid }} W grid import while in {{ mode }} mode.
@@ -348,7 +349,7 @@ automation:
           notification_id: ev_unexpected_grid_charging
           title: "EV Unexpected Charging"
           message: >-
-            {% if mode in ['none', 'hba_wait'] %}
+            {% if mode in ['none', 'assisted_wait'] %}
               Charger running at {{ power }} W but mode is '{{ mode }}' — nothing authorised charging.
             {% else %}
               Charger pulling {{ power }} W with {{ grid }} W grid import while in {{ mode }} mode.
@@ -575,6 +576,81 @@ automation:
           - action: persistent_notification.dismiss
             data:
               notification_id: ev_power_entity_unit_mismatch
+
+  # An assistant plans grid charging above the max price (binary_sensor.ev_assisted_over_price):
+  # asked after a new plan or plug-in, and again at input_datetime.ev_assisted_reminder while
+  # unanswered. Charge or Skip goes to input_select.ev_assisted_over_price. No answer = it charges.
+  - id: ev_notify_assisted_over_price
+    alias: "EV: Assisted charging above max price"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_assisted_over_price
+        to: "on"
+        for: "00:01:00"
+      - trigger: template
+        value_template: >-
+          {% set t = states('input_datetime.ev_assisted_reminder')[:5] %}
+          {{ now().strftime('%H:%M') == ('20:00' if t in ['00:00', 'unkno', 'unava'] else t) }}
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.ev_assisted_over_price
+        state: "on"
+      - condition: state
+        entity_id: input_select.ev_assisted_over_price
+        state: "Ask"
+      - condition: state
+        entity_id: input_boolean.ev_notifications_enabled
+        state: "on"
+    actions:
+      - variables:
+          e: "{{ states('input_text.ev_assisted_entity') | trim }}"
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: charging above the max price"
+          message: >-
+            The car needs {{ state_attr(e, 'over_price_kwh') }} kWh above
+            € {{ states('input_number.ev_window_charging_max_price') }}/kWh, from
+            {{ state_attr(e, 'over_price_from') }}. That costs about
+            € {{ state_attr(e, 'over_price_eur') }} extra. Without an answer it charges.
+          tag: ev_assisted_over_price
+          color: orange
+          priority: high
+          actions:
+            - { action: EV_OVER_CHARGE, title: "Charge" }
+            - { action: EV_OVER_SKIP, title: "Skip" }
+
+  - id: ev_assisted_over_price_answer
+    alias: "EV: Assisted above max price answered"
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data: { action: EV_OVER_CHARGE }
+        id: Charge
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data: { action: EV_OVER_SKIP }
+        id: Skip
+    actions:
+      - action: input_select.select_option
+        target: { entity_id: input_select.ev_assisted_over_price }
+        data: { option: "{{ trigger.id }}" }
+
+  - id: ev_assisted_over_price_reset
+    alias: "EV: Assisted above max price back to Ask"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_is_connected
+        to: "off"
+      - trigger: template
+        value_template: "{{ now().hour == states('input_number.ev_window_charging_end_hour') | int(7) and now().minute == 0 }}"
+    actions:
+      - action: input_select.select_option
+        target: { entity_id: input_select.ev_assisted_over_price }
+        data: { option: "Ask" }
 
 script:
   # Sends a notification to the configured legacy notify.* service,

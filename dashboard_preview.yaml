@@ -202,7 +202,22 @@ views:
             name: Manual Override (stop HA)
           - type: divider
           - entity: input_boolean.ev_solar_charging
-          - entity: input_boolean.ev_battery_assist_charging
+          - entity: input_boolean.ev_follow_assisted
+            name: Follow assisted (HBA in charge)
+          - type: conditional
+            conditions:
+              - entity: binary_sensor.ev_following_assisted
+                state: "on"
+            row:
+              type: section
+              label: Assisted is in charge. Solar, window and cheapest wait until it ends
+          - type: conditional
+            conditions:
+              - entity: binary_sensor.ev_following_assisted
+                state: "on"
+            row:
+              entity: sensor.ev_charging_mode_display
+              name: Assisted now
           - entity: input_boolean.ev_window_charging
           - entity: input_number.ev_window_charging_start_hour
             name: Window Start (Hour)
@@ -235,8 +250,6 @@ views:
             name: Solar Charging Limit (%)
           - entity: input_number.ev_charging_limit_window
             name: Window Charging Limit (%)
-          - entity: input_number.ev_charging_limit_hba
-            name: HBA Charging Limit (%)
           - entity: input_number.ev_charging_limit_force
             name: Force Charging Limit (%)
           - type: divider
@@ -253,7 +266,7 @@ views:
             name: Car Charging Limit
           - entity: sensor.ev_expected_charging_limit
             name: Expected Charging Limit
-          - entity: sensor.ev_charging_mode
+          - entity: sensor.ev_charging_mode_display
             name: Charging Mode
           - entity: binary_sensor.ev_solar_viable
             name: Solar Viable
@@ -692,16 +705,16 @@ views:
               - type: divider
               - entity: input_text.ev_home_battery_power_entity
                 name: Home battery power entity
-              - entity: input_text.ev_home_battery_assist_active_entity
-                name: Battery assist active entity
               - entity: input_text.ev_home_battery_priority_entity
                 name: Home battery priority entity
-              - entity: input_text.ev_home_battery_plan_entity
-                name: Home battery plan entity
-              - entity: input_boolean.ev_follow_hba
-                name: Follow HBA
-              - entity: binary_sensor.ev_following_hba
-                name: Following HBA (status)
+              - entity: input_text.ev_assisted_entity
+                name: Assisted entity
+              - entity: binary_sensor.ev_following_assisted
+                name: Following assisted (status)
+              - entity: input_select.ev_assisted_over_price
+                name: Above max price
+              - entity: input_datetime.ev_assisted_reminder
+                name: Ask again at
               - type: divider
               - entity: binary_sensor.ev_solar_viable
                 name: Solar viable (status)
@@ -726,16 +739,17 @@ views:
               The charging component is added back into the grid excess
               calculation so solar absorbed by home batteries stays visible
               to the EV charger; the discharging component is subtracted in
-              every mode except battery assist, so battery power exported to
+              every mode unless an assistant pushes it to the car, so battery power exported to
               the grid (e.g. a sell-to-grid strategy) is never mistaken for
               solar surplus.
               Example: `sensor.hba_total_battery_power`
 
-              **Battery assist active entity**: Binary sensor published by
-              your home battery system when it is willing to discharge for EV
-              charging. Requires **EV Battery Assist Charging** (main
-              settings) to also be enabled.
-              Example: `binary_sensor.hba_battery_assist_active`
+              **Assisted entity**: Binary sensor from an outside assistant that
+              is on while it is in charge of the car, with attribute `ev_mode`
+              (force, battery or wait) and optional `ev_limit`. Requires
+              **Follow assisted** (main settings). Filled in by Apply defaults
+              when HBA is installed.
+              Example: `binary_sensor.hba_ev_assist`
 
               **Home battery priority entity**: Binary sensor published by
               your home battery system that is on while the battery should get

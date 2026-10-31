@@ -120,11 +120,10 @@ Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/mars
 | EV helper | HBA entity | Effect |
 |---|---|---|
 | `ev_home_battery_power_entity` | `sensor.hba_total_battery_power` | Solar mode counts battery charging as surplus for the car; battery discharge (e.g. selling) never counts as solar |
-| `ev_home_battery_assist_active_entity` | `binary_sensor.hba_battery_assist_active` | HBA *Timed EV charge*: the car charges from the batteries (battery_assist mode) |
 | `ev_home_battery_priority_entity` | `binary_sensor.hba_batteries_before_ev` | HBA *Charge alongside EV* below its *Batteries first* reserve: the batteries get the solar surplus first, the car what is left |
-| `ev_home_battery_plan_entity` | `binary_sensor.hba_ev_plan_active` | While *EV Follow HBA* is on and HBA *Planned* is in charge, its plan replaces window and cheapest charging: `sensor.ev_charging_mode` shows `hba_grid` or `hba_wait`. Solar, battery assist and force keep working. |
+| `ev_assisted_entity` (filled in by Apply defaults) | `binary_sensor.hba_ev_assist` | While **Follow assisted** is on and HBA is in charge (*Timed EV charge*, or *Planned* with *Plan the car*): `sensor.ev_charging_mode` shows `assisted_force`, `assisted_battery`, `assisted_wait` or `solar` (displayed as `assisted_solar`), whatever your solar, window and cheapest switches say. Force charge always wins. |
 
-In the other direction HBA reads `binary_sensor.ev_is_charging` and
+In the other direction HBA reads `sensor.ev_car_info` (the active car: SoC, capacity, connected, max price, departure), `binary_sensor.ev_is_charging` and
 `binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). For HBA's per-phase
 limits you can define `sensor.ev_charger_power` (or `_l1`..`_l3`) in HBA's `hba_config.yaml` from
 `sensor.peblar_ev_charger_power` / the Peblar per-phase Modbus sensors. The Peblar's own load

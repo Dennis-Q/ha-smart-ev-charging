@@ -70,10 +70,10 @@ input_boolean:
     name: "EV Manual Override"
     icon: mdi:hand-back-left
 
-  # Your switch to let a home battery system (HBA) decide when the car charges, see
-  # input_text.ev_home_battery_plan_entity. Off disconnects it; everything else keeps working.
-  ev_follow_hba:
-    name: "EV Follow HBA"
+  # Your switch to let an outside assistant (HBA: Planned, Timed EV charge) decide when the car
+  # charges, see input_text.ev_assisted_entity. Off = this project's own rules, nothing else changes.
+  ev_follow_assisted:
+    name: "EV Follow Assisted"
     icon: mdi:home-battery-outline
 
   ev_force_charge_once:
@@ -88,7 +88,24 @@ input_boolean:
     name: "EV Charge prefer Tariff over Solar"
     icon: mdi:sun-clock-outline
 
+input_select:
+  # Answer to the over-price question (binary_sensor.ev_assisted_over_price). Ask = no answer
+  # yet, which charges. Back to Ask at unplug and at the end of the window.
+  ev_assisted_over_price:
+    name: "EV Assisted above max price"
+    options:
+      - "Ask"
+      - "Charge"
+      - "Skip"
+    icon: mdi:cash-alert
+
 input_datetime:
+  # When to ask again about charging above the max price. Never set (00:00) = 20:00.
+  ev_assisted_reminder:
+    name: "EV Assisted reminder time"
+    has_date: false
+    has_time: true
+    icon: mdi:bell-clock
   ev_force_charge_timeout:
     name: "EV Force Charge Timeout"
     has_date: true
@@ -136,9 +153,6 @@ script:
         target: { entity_id: input_number.ev_charging_limit_window }
         data: { value: 60 }
       - action: input_number.set_value
-        target: { entity_id: input_number.ev_charging_limit_hba }
-        data: { value: 80 }
-      - action: input_number.set_value
         target: { entity_id: input_number.ev_window_charging_start_hour }
         data: { value: 22 }
       - action: input_number.set_value
@@ -166,15 +180,28 @@ script:
             - input_boolean.ev_force_charge_permanent
             - input_boolean.ev_charge_prefer_tariff_over_solar
             - input_boolean.ev_solar_charging
-            - input_boolean.ev_battery_assist_charging
+            - input_boolean.ev_follow_assisted
             - input_boolean.ev_window_charging
             - input_boolean.ev_dynamic_tariff_optimization
             - input_boolean.ev_window_max_price_enabled
       - action: input_boolean.turn_on
         target:
           entity_id: input_boolean.ev_notifications_enabled
+      - action: input_datetime.set_datetime
+        target: { entity_id: input_datetime.ev_assisted_reminder }
+        data: { time: "20:00:00" }
+      # Wire up HBA when it is installed and the field is still empty
+      - if:
+          - condition: template
+            value_template: >-
+              {{ states('input_text.ev_assisted_entity') | trim in ['', 'unknown', 'unavailable']
+                 and states('binary_sensor.hba_ev_assist') not in ['unknown', 'unavailable'] }}
+        then:
+          - action: input_text.set_value
+            target: { entity_id: input_text.ev_assisted_entity }
+            data: { value: "binary_sensor.hba_ev_assist" }
       # Note: input_text helpers (ev_notify_entity_id, ev_solar_power_entity_1/2,
-      # ev_home_battery_power_entity, ev_home_battery_assist_active_entity,
+      # ev_home_battery_power_entity,
       # ev_price_entity) and the car slots (ev_vehicles.yaml) are
       # deliberately NOT reset — they are install-specific wiring.
 
@@ -248,7 +275,7 @@ template:
 
       # 'on' when EV is drawing significant power in a mode that doesn't justify it.
       # Condition A: mode=none but charger power > 300 W.
-      # Condition B: mode=solar/battery_assist but charger power > 300 W AND grid import > 500 W
+      # Condition B: mode=solar/assisted_battery but charger power > 300 W AND grid import > 500 W
       #              (control loop isn't regulating — pulling from grid instead of surplus/battery).
       # Manual override suppressed here so neither notification fires when the user has authorised
       # out-of-band charging. delay_on: 5 min filters mode-transition noise and solar ramp-up.
@@ -263,27 +290,39 @@ template:
             {% set mode = states('sensor.ev_charging_mode') %}
             {% set power = states('sensor.peblar_ev_charger_power') | float(0) %}
             {% set grid = states('sensor.p1_meter_power') | float(0) %}
-            {% if mode in ['none', 'hba_wait'] and power > 300 %}
+            {% if mode in ['none', 'assisted_wait'] and power > 300 %}
               true
-            {% elif mode in ['solar', 'battery_assist'] and power > 300 and grid > 500 %}
+            {% elif mode in ['solar', 'assisted_battery'] and power > 300 and grid > 500 %}
               true
             {% else %}
               false
             {% endif %}
           {% endif %}
 
-      # 'on' when the home battery system is in charge of the car: your switch is on and its plan
-      # entity is on. Off, empty, missing or stale there = this project's own rules. Force charge
-      # always wins. sensor.ev_charging_mode then gives hba_grid or hba_wait instead of window/cheapest.
-      - name: "EV Following HBA"
-        unique_id: ev_following_hba
+      # 'on' when an outside assistant is in charge of the car: your switch is on and its entity
+      # is on. Off, empty, missing or stale there = this project's own rules. Force charge always
+      # wins. Attributes of that entity: ev_mode = force, battery or wait; ev_limit = the car's
+      # limit in % (optional); over_price_kwh / over_price_eur / over_price_from = grid charging
+      # it plans above the max price (optional, see ev_notifications.yaml).
+      - name: "EV Following Assisted"
+        unique_id: ev_following_assisted
         icon: mdi:home-battery-outline
         state: >-
-          {% set e = states('input_text.ev_home_battery_plan_entity') | trim %}
-          {{ is_state('input_boolean.ev_follow_hba', 'on')
+          {% set e = states('input_text.ev_assisted_entity') | trim %}
+          {{ is_state('input_boolean.ev_follow_assisted', 'on')
              and e not in ['', 'unknown', 'unavailable', 'none'] and is_state(e, 'on') }}
         attributes:
-          ev_mode: "{{ state_attr(states('input_text.ev_home_battery_plan_entity') | trim, 'ev_mode') or 'none' }}"
+          ev_mode: "{{ state_attr(states('input_text.ev_assisted_entity') | trim, 'ev_mode') or 'none' }}"
+          ev_limit: "{{ state_attr(states('input_text.ev_assisted_entity') | trim, 'ev_limit') }}"
+
+      # The assistant plans grid charging above the max price: asks Charge or Skip
+      # (ev_notifications.yaml). No answer = it charges.
+      - name: "EV Assisted Over Price"
+        unique_id: ev_assisted_over_price
+        icon: mdi:cash-alert
+        state: >-
+          {{ is_state('binary_sensor.ev_following_assisted', 'on')
+             and state_attr(states('input_text.ev_assisted_entity') | trim, 'over_price_kwh') | float(0) > 0.1 }}
 
   - sensor:
       # Determine expected charging limit (the car's charge limit is corrected to it).
@@ -300,19 +339,20 @@ template:
           {% set mode = states('sensor.ev_charging_mode') %}
           {% if mode == 'force' %}
             {{ states('input_number.ev_charging_limit_force') | int(100) }}
-          {% elif mode in ['battery_assist', 'solar'] %}
-            {{ states('input_number.ev_charging_limit_solar') | int(100) }}
+          {% elif mode == 'assisted_force' %}
+            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | int(states('sensor.ev_car_target_soc') | int(80)) }}
+          {% elif mode in ['assisted_battery', 'solar'] %}
+            {% set solar_limit = states('input_number.ev_charging_limit_solar') | int(100) %}
+            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | int(solar_limit) if is_state('binary_sensor.ev_following_assisted', 'on') else solar_limit }}
           {% elif mode in ['cheapest', 'window'] %}
             {{ states('input_number.ev_charging_limit_window') | int(80) }}
-          {% elif mode == 'hba_grid' %}
-            {{ states('input_number.ev_charging_limit_hba') | int(80) }}
           {% else %}
             {{ states('sensor.ev_car_target_soc') | int(states('input_number.ev_charging_limit_window') | int(80)) }}
           {% endif %}
         attributes:
           limit_source: >-
             {% set mode = states('sensor.ev_charging_mode') %}
-            {{ mode if mode in ['force', 'battery_assist', 'solar', 'cheapest', 'window', 'hba_grid'] else 'car' }}
+            {{ mode if mode in ['force', 'assisted_force', 'assisted_battery', 'solar', 'cheapest', 'window'] else 'car' }}
 
       - name: "EV Charging Mode"
         unique_id: ev_charging_mode
@@ -321,34 +361,34 @@ template:
           {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
           {# A guest car (no car data) gets no window charging — only force and solar #}
           {% set is_guest = state_attr('sensor.ev_active_car', 'guest') in [true, 'true', 'True'] %}
-          {# HBA in charge: its plan replaces window and cheapest; solar, assist and force stay. A guest has no SoC, so no plan #}
-          {% set following_hba = is_state('binary_sensor.ev_following_hba', 'on') and not is_guest %}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') and not is_guest and not following_hba %}
+          {# An assistant in charge replaces solar, window and cheapest and ignores their switches; force
+             stays. A guest has no SoC, so no plan: ev_mode battery (the home battery pushes) is all it gets #}
+          {% set assisted = is_state('binary_sensor.ev_following_assisted', 'on') %}
+          {% set assisted_mode = state_attr('binary_sensor.ev_following_assisted', 'ev_mode') %}
+          {% set following = assisted and not is_guest %}
+          {% set below_limit = states('sensor.ev_car_soc') | float(0) < state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | float(101) %}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') and not is_guest and not following %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
           {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
           {% set solar_enabled = is_state('input_boolean.ev_solar_charging', 'on') %}
           {% set solar_viable = is_state('binary_sensor.ev_solar_viable', 'on') %}
-          {% set batt_assist_e = states('input_text.ev_home_battery_assist_active_entity') | trim %}
-          {% set battery_assist_on = is_state('input_boolean.ev_battery_assist_charging', 'on') and
-                                      batt_assist_e not in ['', 'unknown', 'unavailable', 'none'] and
-                                      is_state(batt_assist_e, 'on') %}
           {% if is_force_charging %}
             force
-          {% elif battery_assist_on %}
-            battery_assist
-          {% elif following_hba and state_attr('binary_sensor.ev_following_hba', 'ev_mode') == 'grid' %}
-            hba_grid
+          {% elif assisted and assisted_mode == 'battery' %}
+            assisted_battery
+          {% elif following and assisted_mode == 'force' and below_limit %}
+            assisted_force
           {# Prefer tariff over solar: with optimisation the cheapest slots win, without it the
              whole window (with the max price limit: every slot cheap enough) wins #}
           {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window %}
             cheapest
           {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
             window
-          {% elif solar_enabled and solar_viable %}
+          {% elif (solar_enabled or following) and solar_viable %}
             solar
-          {% elif following_hba %}
-            hba_wait
+          {% elif following %}
+            assisted_wait
           {% elif is_window_active and tarif_optimization and is_in_cheapest_window %}
             cheapest
           {% elif is_window_active and not tarif_optimization %}
@@ -357,20 +397,28 @@ template:
             none
           {% endif %}
 
-      # What a home battery planner (HBA) needs to know about the car, in one entity. State = kWh at
-      # the charger to reach ev_charging_limit_hba. known is false without a SoC (a guest): no plan.
-      - name: "EV Plan Input"
-        unique_id: ev_plan_input
-        unit_of_measurement: kWh
+      # What the dashboards show: solar logic with an assistant in charge reads assisted_solar.
+      # Automations keep reading sensor.ev_charging_mode.
+      - name: "EV Charging Mode Display"
+        unique_id: ev_charging_mode_display
         state: >-
-          {% set soc = states('sensor.ev_car_soc') | float(-1) %}
-          {% set target = states('input_number.ev_charging_limit_hba') | float(0) %}
-          {% set cap = states('sensor.ev_car_battery_capacity') | float(0) %}
-          {% set eff = [states('input_number.ev_charging_efficiency_percent') | float(90) / 100, 0.5] | max %}
-          {{ (([target - soc, 0] | max) / 100 * cap / eff) | round(1) if soc >= 0 else 0 }}
+          {% set mode = states('sensor.ev_charging_mode') %}
+          {{ 'assisted_solar' if mode == 'solar' and is_state('binary_sensor.ev_following_assisted', 'on') else mode }}
+
+      # What an assistant (HBA) needs to know about the active car, in one entity. State = SoC %.
+      # known is false without a SoC (a guest): no plan. following = input_boolean.ev_follow_assisted.
+      - name: "EV Car Info"
+        unique_id: ev_car_info
+        unit_of_measurement: "%"
+        icon: mdi:car-info
+        state: "{{ states('sensor.ev_car_soc') | float(0) }}"
         attributes:
           known: "{{ states('sensor.ev_car_soc') | float(-1) >= 0 and state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True'] }}"
           connected: "{{ is_state('binary_sensor.ev_is_connected', 'on') }}"
+          following: "{{ is_state('input_boolean.ev_follow_assisted', 'on') }}"
+          capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) }}"
+          efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(90) / 100, 0.5] | max }}"
+          over_price: "{{ states('input_select.ev_assisted_over_price') }}"
           charge_kw: "{{ states('sensor.ev_car_max_power') | float(11) }}"
           max_price: "{{ states('input_number.ev_window_charging_max_price') | float(0) }}"
           # Departure: the next end of the charging window
@@ -410,9 +458,8 @@ automation:
             - input_text.ev_solar_power_entity_1
             - input_text.ev_solar_power_entity_2
             - input_text.ev_home_battery_power_entity
-            - input_text.ev_home_battery_assist_active_entity
             - input_text.ev_home_battery_priority_entity
-            - input_text.ev_home_battery_plan_entity
+            - input_text.ev_assisted_entity
           sequence:
             - if:
                 - condition: template
@@ -422,6 +469,16 @@ automation:
                   continue_on_error: true
                   target: { entity_id: "{{ repeat.item }}" }
                   data: { value: "" }
+      # HBA installed and the field still empty: wire it up. Follow assisted stays your choice.
+      - if:
+          - condition: template
+            value_template: >-
+              {{ states('input_text.ev_assisted_entity') | trim in ['', 'unknown', 'unavailable']
+                 and states('binary_sensor.hba_ev_assist') not in ['unknown', 'unavailable'] }}
+        then:
+          - action: input_text.set_value
+            target: { entity_id: input_text.ev_assisted_entity }
+            data: { value: "binary_sensor.hba_ev_assist" }
 
 
   - id: "ev_force_charge_set_timeout"
@@ -656,7 +713,7 @@ automation:
           - input_boolean.ev_force_charge_permanent
           - input_boolean.ev_force_charge_once
           - input_boolean.ev_solar_charging
-          - input_boolean.ev_battery_assist_charging
+          - input_boolean.ev_follow_assisted
           - input_boolean.ev_window_charging
           - binary_sensor.ev_is_charging
           - binary_sensor.ev_is_connected
@@ -712,7 +769,7 @@ automation:
           - "force"
           - "cheapest"
           - "window"
-          - "hba_grid"
+          - "assisted_force"
         id: mode_full_power
         for: "00:00:30"
         # not_from:
@@ -722,7 +779,7 @@ automation:
         entity_id: sensor.ev_charging_mode
         to:
           - "none"
-          - "hba_wait"
+          - "assisted_wait"
         id: mode_none
         for: "00:00:30"
         # not_from:
@@ -776,7 +833,7 @@ automation:
                 state: "on"
               # Required for the 'connected' trigger, which fires on plug-in
               # regardless of mode: only the full-power modes start here. Solar
-              # and battery_assist are driven by ev_solar.yaml, and 'none' must
+              # and assisted_battery are driven by ev_solar.yaml, and 'none' must
               # not start anything. Redundant for the mode_full_power trigger,
               # which already filters on these states.
               - condition: state
@@ -785,7 +842,7 @@ automation:
                   - "force"
                   - "cheapest"
                   - "window"
-                  - "hba_grid"
+                  - "assisted_force"
             sequence:
               - action: number.set_value # maximize power
                 target:
@@ -814,7 +871,7 @@ automation:
                         entity_id: sensor.ev_charging_mode
                         state:
                           - "none"
-                          - "hba_wait"
+                          - "assisted_wait"
             # No connection gate: stop regardless of plug state so the charge
             # switch is never left armed across a disconnect (re-writing 0 is
             # toggle-budget-free; harmless when no car is present).
@@ -852,7 +909,7 @@ recorder:
 logbook:
   exclude:
     entities:
-      # Control loop — triggers every 3 s while solar/battery_assist charging is active
+      # Control loop — triggers every 3 s while solar/assisted_battery charging is active
       - automation.ev_solar_dynamic_power_control
       # Charger current setpoint — written every 3 s by the control loop
       - number.peblar_ev_charger_charge_current_limit_ma
