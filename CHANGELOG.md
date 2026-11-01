@@ -5,6 +5,7 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- `sensor.ev_car_info` also gives `car_name`, the active car, for the HBA dashboard.
 - **An assistant can decide for the car (HBA: Planned, Timed EV charge).** New switch
   `input_boolean.ev_follow_assisted` (off by default), field `input_text.ev_assisted_entity` (filled in
   by Apply defaults when HBA is installed) and status `binary_sensor.ev_following_assisted`. While

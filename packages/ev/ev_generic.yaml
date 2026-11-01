@@ -414,6 +414,7 @@ template:
         state: "{{ states('sensor.ev_car_soc') | float(0) }}"
         attributes:
           known: "{{ states('sensor.ev_car_soc') | float(-1) >= 0 and state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True'] }}"
+          car_name: "{{ states('sensor.ev_active_car') }}"
           connected: "{{ is_state('binary_sensor.ev_is_connected', 'on') }}"
           following: "{{ is_state('input_boolean.ev_follow_assisted', 'on') }}"
           capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) }}"
