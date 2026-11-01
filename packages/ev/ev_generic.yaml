@@ -421,6 +421,7 @@ template:
           over_price: "{{ states('input_select.ev_assisted_over_price') }}"
           charge_kw: "{{ states('sensor.ev_car_max_power') | float(11) }}"
           max_price: "{{ states('input_number.ev_window_charging_max_price') | float(0) }}"
+          max_price_on: "{{ is_state('input_boolean.ev_window_max_price_enabled', 'on') }}"
           # Departure: the next end of the charging window
           deadline: >-
             {% set t = today_at('%02d:00' | format(states('input_number.ev_window_charging_end_hour') | int(7))) %}

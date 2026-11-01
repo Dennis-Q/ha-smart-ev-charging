@@ -13,7 +13,7 @@ All notable changes to this project will be documented here.
   normal solar mode whatever its switch says (`sensor.ev_charging_mode_display` shows `assisted_solar`).
   Force always wins. `ev_limit` sets the car's limit, and `assisted_force` stops at the charger when
   the SoC gets there, so a car without a charge-limit entity works too. `sensor.ev_car_info` tells
-  the assistant about the active car.
+  the assistant about the active car, including the max price and whether its switch is on.
 - **Warning above the max price.** When the assistant plans grid charging above the max price you get
   Charge / Skip after plug-in or a new plan and again in the evening (`input_datetime.ev_assisted_reminder`,
   default 20:00). No answer = it charges.
