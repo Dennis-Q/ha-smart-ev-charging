@@ -60,9 +60,12 @@ input_text:
   #              regulation, same as solar mode, with the battery as the source
   #              (assisted_battery). The charger stays armed while it pauses.
   #              Combining with solar is automatic.
-  #     wait     nothing from the grid; available solar runs as solar mode whatever
+  #     solar    nothing from the grid; available solar runs as solar mode whatever
   #              input_boolean.ev_solar_charging says (shown as assisted_solar), else
-  #              assisted_wait
+  #              assisted_wait. Any other value acts the same.
+  #     wait     nothing at all, no solar either (the assistant keeps the solar for the
+  #              home battery): assisted_wait, a running solar session stops
+  #              (until 0.2.19 dev of 2026-11, wait meant what solar means now)
   #   Optional attribute ev_limit: the car's limit in %, the charger stops there too.
   #   Filled in by script.ev_apply_defaults when HBA is installed. Leave empty if unused.
   #   Example (HBA): binary_sensor.hba_ev_assist

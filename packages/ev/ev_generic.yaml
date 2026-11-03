@@ -301,7 +301,8 @@ template:
 
       # 'on' when an outside assistant is in charge of the car: your switch is on and its entity
       # is on. Off, empty, missing or stale there = this project's own rules. Force charge always
-      # wins. Attributes of that entity: ev_mode = force, battery or wait; ev_limit = the car's
+      # wins. Attributes of that entity: ev_mode = force, battery, solar (no grid, spare solar
+      # allowed; any other value acts the same) or wait (nothing, no solar either); ev_limit = the car's
       # limit in % (optional); over_price_kwh / over_price_eur / over_price_from = grid charging
       # it plans above the max price (optional, see ev_notifications.yaml).
       - name: "EV Following Assisted"
@@ -385,7 +386,8 @@ template:
             cheapest
           {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
             window
-          {% elif (solar_enabled or following) and solar_viable %}
+          {# ev_mode wait: the assistant wants the solar for the home battery, so no solar either #}
+          {% elif (solar_enabled or following) and solar_viable and not (following and assisted_mode == 'wait') %}
             solar
           {% elif following %}
             assisted_wait

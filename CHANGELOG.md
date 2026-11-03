@@ -9,9 +9,11 @@ All notable changes to this project will be documented here.
 - **An assistant can decide for the car (HBA: Planned, Timed EV charge).** New switch
   `input_boolean.ev_follow_assisted` (off by default), field `input_text.ev_assisted_entity` (filled in
   by Apply defaults when HBA is installed) and status `binary_sensor.ev_following_assisted`. While
-  following, that entity's attribute `ev_mode` (force, battery, wait) gives mode `assisted_force`,
-  `assisted_battery` or `assisted_wait`; window and cheapest wait, and available solar runs as
-  normal solar mode whatever its switch says (`sensor.ev_charging_mode_display` shows `assisted_solar`).
+  following, that entity's attribute `ev_mode` (force, battery, solar, wait) gives mode `assisted_force`,
+  `assisted_battery` or `assisted_wait`; window and cheapest wait. With `solar` available solar runs as
+  normal solar mode whatever its switch says (`sensor.ev_charging_mode_display` shows `assisted_solar`);
+  with `wait` the car takes no solar either, so the home battery gets it (a running solar session stops).
+  Update both projects together: in earlier dev builds `wait` meant what `solar` means now.
   Force always wins. `ev_limit` sets the car's limit, and `assisted_force` stops at the charger when
   the SoC gets there, so a car without a charge-limit entity works too. `sensor.ev_car_info` tells
   the assistant about the active car, including the max price and whether its switch is on.
