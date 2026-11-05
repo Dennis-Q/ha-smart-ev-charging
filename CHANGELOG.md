@@ -55,6 +55,12 @@ All notable changes to this project will be documented here.
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
 
 ### Fixed
+- **Fewer car charge-limit writes.** Each write is a cloud command to the car. The limit check now
+  waits until the mode has been settled for 30 s (as the charger does), leaves the car's limit alone in a mode without
+  a limit of its own (assisted wait, none), and doesn't write while the car limit is still unknown
+  after a restart. Before, the car's own report raced the expected limit and wrote the old value
+  back: 7 writes in one hour on 2026-11-05 (80/100 ping-pong after 15–22 s assisted force blips,
+  and 80 right after a restart), where 1 was needed.
 - **Own code review (2026-10-28), after Mik3yZ's round:**
   - **Solar starts when the surplus is already there.** Plugging in on a steady sunny afternoon,
     turning solar on, or turning manual override off never started the charger: the start only

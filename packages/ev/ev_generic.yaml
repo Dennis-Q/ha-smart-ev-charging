@@ -696,12 +696,16 @@ automation:
                   priority: high
 
   # Validate charging limit
-  # reduce triggers / API calls further
+  # Each write is a cloud command to the car, so only write a settled value:
+  # every trigger restarts a 30 s wait (same as the charger follows a new mode in
+  # ev_generic_charging_mode_control) and the check runs after it, on fresh values.
+  # Without the wait the car's own report raced the expected limit and wrote the
+  # old value back (prod 2026-11-05: 80/100 ping-pong after a 15 s
+  # assisted force, and 80 right after a restart while the car limit was unknown).
   - id: "ev_validate_charging_limit"
     alias: "EV Validate Charging Limit"
     description: "Validate and reset charging limit"
-    mode: single
-    max_exceeded: silent
+    mode: restart
     triggers:
       # - trigger: time_pattern
       #   minutes: "/10" # was /2
@@ -725,29 +729,38 @@ automation:
       - trigger: state # trigger on 'off' state
         entity_id: input_boolean.ev_manual_override
         to: "off"
-    condition:
+    actions:
+      - delay: "00:00:30"
       - condition: state
         entity_id: input_boolean.ev_manual_override
         state: "off"
       - condition: state
         entity_id: binary_sensor.ev_is_connected
         state: "on"
-      # Only when the active car has a charge-limit entity and both limits are known.
-      # Compared with the expected limit as the car's number can take it (rounded to
-      # its step, clamped to its min/max), so an unreachable value is not retried.
+      # No limit of its own in this mode (assisted wait, none): the car's limit stays
+      - condition: template
+        value_template: "{{ state_attr('sensor.ev_expected_charging_limit', 'limit_source') not in [none, 'car'] }}"
+      # Only when the active car has a charge-limit entity and both limits are known
+      # (not while the car limit is still unknown after a restart). Compared with the
+      # expected limit as the car's number can take it (rounded to its step, clamped
+      # to its min/max), so an unreachable value is not retried.
       - condition: template
         value_template: >
           {% set current_limit = states('sensor.ev_car_target_soc') %}
           {% set expected_limit = states('sensor.ev_car_expected_limit') %}
           {{ current_limit | is_number and expected_limit | is_number and
              current_limit | int != expected_limit | int }}
-    actions:
       - variables:
           expected_limit: "{{ states('sensor.ev_car_expected_limit') | int }}"
           current_limit: "{{ states('sensor.ev_car_target_soc') | int }}"
-      - action: script.ev_set_car_charge_limit
+      # Started, not awaited: a restart of this automation must not cancel a
+      # cloud write in progress (the script is queued)
+      - action: script.turn_on
+        target:
+          entity_id: script.ev_set_car_charge_limit
         data:
-          limit: "{{ expected_limit }}"
+          variables:
+            limit: "{{ expected_limit }}"
       - action: script.ev_notify_dispatch
         data:
           title: "EV Charging Limit Corrected"
