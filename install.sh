@@ -298,6 +298,38 @@ fi
 
 echo ""
 
+# ── Other Peblar Modbus files, and double file names ─────────────────────────
+# Only looks and warns; changes nothing.
+#   - A Peblar Modbus file that is not this project's (an own copy, an old template,
+#     another name or folder): it is never updated by this installer, and next to
+#     packages/ev/ev_peblar_modbus.yaml both define the same hub and entities.
+#   - Two ev_*.yaml files with the same name under packages/: Home Assistant loads only
+#     one of them, and which one is not obvious (an old copy in a subfolder wins).
+
+EV_WARN=false
+while IFS= read -r _f; do
+    [ "$_f" = "$MODBUS_TARGET" ] && continue
+    grep -q "^modbus:" "$_f" 2>/dev/null || continue
+    grep -qi "peblar" "$_f" 2>/dev/null || continue
+    EV_WARN=true
+    warn "${_f#"${CONFIG_DIR}/"} is a Peblar Modbus file that is not this project's."
+    if [ -f "$MODBUS_TARGET" ]; then
+        say "It defines the charger a second time next to packages/ev/ev_peblar_modbus.yaml:"
+        say "remove it, or rename it so it no longer ends in .yaml."
+    else
+        say "This installer does not update it, and newer features (charger unreachable,"
+        say "per-phase power) need this project's packages/ev/ev_peblar_modbus.yaml."
+    fi
+done < <(find "${CONFIG_DIR}/packages" -type f -name '*.yaml' 2>/dev/null | sort)
+
+for _b in $(find "${CONFIG_DIR}/packages" -type f -name 'ev_*.yaml' 2>/dev/null | sed 's|.*/||' | sort | uniq -d); do
+    EV_WARN=true
+    warn "More than one file named ${_b} under packages/ — Home Assistant loads only one of them:"
+    find "${CONFIG_DIR}/packages" -type f -name "$_b" | sed "s|^${CONFIG_DIR}/|      |"
+    say "Remove the old copy, or rename it so it no longer ends in .yaml."
+done
+[ "$EV_WARN" = true ] && echo ""
+
 # ── configuration.yaml checks ─────────────────────────────────────────────────
 
 CONF="${CONFIG_DIR}/configuration.yaml"
