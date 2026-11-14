@@ -339,14 +339,14 @@ template:
         unit_of_measurement: "kWh"
         icon: mdi:battery-high
         state: >-
-          {{ states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_battery_capacity_kwh') | float(60) }}
+          {{ states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_battery_capacity_kwh') | float(58) }}
 
       - name: "EV Car Max Power"
         unique_id: ev_car_max_power
         unit_of_measurement: "kW"
         icon: mdi:lightning-bolt-circle
         state: >-
-          {% set car = states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_max_power_kw') | float(11) %}
+          {% set car = states('input_number.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_max_power_kw') | float(10.5) %}
           {% set charger = states('input_number.ev_charger_max_power_kw') | float(11) %}
           {# A 1-phase car only gets one of the charger's three phases (16 A x 230 V
              = 3.7 kW on an 11 kW charger) — otherwise hours needed comes out 3x too
@@ -444,7 +444,8 @@ automation:
                   continue_on_error: true
                   target: { entity_id: "{{ repeat.item }}" }
                   data: { value: "" }
-      # Numbers still at their minimum were never set: Elroq-like defaults
+      # Numbers still at their minimum were never set: Elroq 60 defaults (58 kWh usable; 10.5 kW is
+      # what an 11 kW charger measured per hour, prod 2026-11-12/13)
       - repeat:
           for_each: [1, 2, 3]
           sequence:
@@ -454,14 +455,14 @@ automation:
               then:
                 - action: input_number.set_value
                   target: { entity_id: "input_number.ev_car{{ repeat.item }}_battery_capacity_kwh" }
-                  data: { value: 60 }
+                  data: { value: 58 }
             - if:
                 - condition: template
                   value_template: "{{ states('input_number.ev_car' ~ repeat.item ~ '_max_power_kw') | float(1.4) <= 1.4 }}"
               then:
                 - action: input_number.set_value
                   target: { entity_id: "input_number.ev_car{{ repeat.item }}_max_power_kw" }
-                  data: { value: 11 }
+                  data: { value: 10.5 }
       - if:
           - condition: template
             value_template: "{{ states('input_text.ev_car2_name') | trim == '' }}"

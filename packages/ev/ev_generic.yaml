@@ -139,7 +139,7 @@ script:
         data: { value: 11 }
       - action: input_number.set_value
         target: { entity_id: input_number.ev_charging_efficiency_percent }
-        data: { value: 90 }
+        data: { value: 92 }
       - action: input_number.set_value
         target: { entity_id: input_number.ev_power_buffer_watts }
         data: { value: 0 }
@@ -420,7 +420,7 @@ template:
           connected: "{{ is_state('binary_sensor.ev_is_connected', 'on') }}"
           following: "{{ is_state('input_boolean.ev_follow_assisted', 'on') }}"
           capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) }}"
-          efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(90) / 100, 0.5] | max }}"
+          efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(92) / 100, 0.5] | max }}"
           over_price: "{{ states('input_select.ev_assisted_over_price') }}"
           charge_kw: "{{ states('sensor.ev_car_max_power') | float(11) }}"
           max_price: "{{ states('input_number.ev_window_charging_max_price') | float(0) }}"
@@ -816,6 +816,14 @@ automation:
       - trigger: state
         entity_id: binary_sensor.ev_is_connected
         to: "on"
+        id: connected
+        for: "00:00:30"
+      # Re-evaluate when manual override is switched off, for the same reason: a mode that
+      # changed during the override was discarded by the condition below, and a charge
+      # started by hand ran on in mode 'none'. Off = this project decides again.
+      - trigger: state
+        entity_id: input_boolean.ev_manual_override
+        to: "off"
         id: connected
         for: "00:00:30"
       # Another car selected with a different phase setting (e.g. answered the

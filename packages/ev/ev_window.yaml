@@ -224,6 +224,9 @@ template:
           - sensor.ev_hours_needed_for_charging
           - sensor.ev_charging_window_start_time
           - sensor.ev_charging_window_end_time
+          # The max price limit filters the candidates below
+          - input_boolean.ev_window_max_price_enabled
+          - input_number.ev_window_charging_max_price
       # Slot boundaries: drops the slot that just ended from the candidates
       - trigger: time_pattern
         minutes: "/15"
@@ -389,11 +392,12 @@ template:
           {% set battery_capacity = states('sensor.ev_car_battery_capacity') | float(60) %}
           {# the lower of the active car's and the charger's max power #}
           {% set charger_power = states('sensor.ev_car_max_power') | float(11) %}
-          {% set efficiency = states('input_number.ev_charging_efficiency_percent') | float(90) / 100 %}
+          {% set efficiency = states('input_number.ev_charging_efficiency_percent') | float(92) / 100 %}
           {% set battery_percentage_needed = target_battery - current_battery %}
           {% set kwh_needed = (battery_capacity * battery_percentage_needed / 100) %}
           {% set kwh_needed_with_losses = kwh_needed / efficiency %}
-          {% set hours_needed = (kwh_needed_with_losses / charger_power) | round(1) %}
+          {# 2 decimals: rounded to 1, 2.02 h became 2.0 h and the plan was one slot short #}
+          {% set hours_needed = (kwh_needed_with_losses / charger_power) | round(2) %}
           {% if hours_needed > 0 %}
             {{ hours_needed }}
           {% else %}

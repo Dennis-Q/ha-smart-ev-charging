@@ -53,8 +53,25 @@ All notable changes to this project will be documented here.
     configured one does not exist.
   - Removed: `input_number.ev_battery_capacity_kwh` (now per car; 60 kWh / 11 kW by default).
   - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
+- **Defaults closer to what was measured** (Elroq 60 on an 11 kW charger, 2026-11-12/13: 10.4 kWh per
+  full hour, 0.60 kWh per percent): charging efficiency 90 → 92 %, a new car slot 60 → 58 kWh and
+  11 → 10.5 kW. Only for new installs, empty car slots and Apply defaults (efficiency); existing
+  values stay as they are.
 
 ### Fixed
+- **Manual override switched off: this project decides again, also about stopping.** A charge started
+  by hand kept running after the override was switched off: in solar mode with too little sun (no
+  branch stopped it), and in every other mode (the mode automation did not look at the override).
+  Now, 30 s after switching it off, the charger is stopped when the mode would not charge, and a
+  force / cheapest / window mode that became active during the override starts. Plugging in with
+  the charger still on and too little sun stops it the same way.
+- **Stepping down from 3-phase to 1-phase:** the phase switch is written before the higher 1-phase
+  current, which stood on all three phases for a moment (up to ~10 kW).
+- The charging plan follows a change of the max price or its switch at once (was at the next quarter).
+- Hours needed is rounded to 2 decimals (2.02 h became 2.0 h and the plan was one slot short).
+- `sensor.peblar_ev_charger_uptime` is unavailable without the raw counter (it showed "now").
+- Dashboards: "Assisted charging above max price" is in the notification automations list; *Up since*
+  label in the classic dashboard; *Cheapest slots in window* in the preview's debug table.
 - **Fewer car charge-limit writes.** Each write is a cloud command to the car. The limit check now
   waits until the mode has been settled for 30 s (as the charger does), leaves the car's limit alone in a mode without
   a limit of its own (assisted wait, none), and doesn't write while the car limit is still unknown

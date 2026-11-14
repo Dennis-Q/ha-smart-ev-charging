@@ -45,7 +45,7 @@ Per car (`ev_car1_*`, `ev_car2_*`, `ev_car3_*`):
 | Field | Entity | Used for | Empty |
 |---|---|---|---|
 | name | — | car selector, notifications | "Car N" |
-| battery capacity / max charge power | kWh / kW | hours needed (power = lower of car and charger) | 60 kWh / 11 kW |
+| battery capacity / max charge power | kWh / kW | hours needed (power = lower of car and charger) | 58 kWh / 10.5 kW |
 | charges on 1 phase | on/off | charger stays single-phase in every mode (solar gets the whole surplus) | 3-phase |
 | `soc_entity` | sensor, battery level % | hours needed (window), force once until full, charge-complete notification | car 1: setup banner; car 2/3: **guest** |
 | `charge_limit_entity` | number, the car's own charge limit % | read, and set to the active mode's limit (rounded/clamped to the number's min/max/step) | the car keeps its own limit |

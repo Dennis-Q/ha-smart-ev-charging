@@ -633,6 +633,7 @@ views:
                 - entity_id: "automation.ev_*notif*"
                 - entity_id: automation.ev_manual_override_reminder
                 - entity_id: automation.ev_which_car_at_plug_in
+                - entity_id: automation.ev_assisted_charging_above_max_price
                 - entity_id: automation.ev_phase_check_1_phase_car_while_a_3_phase_car_is_selected
             sort:
               method: friendly_name
@@ -1033,4 +1034,4 @@ views:
               - entity: sensor.peblar_ev_charger_cellular_signal_strength
                 name: Cellular signal
               - entity: sensor.peblar_ev_charger_uptime
-                name: Uptime (s)
+                name: Up since

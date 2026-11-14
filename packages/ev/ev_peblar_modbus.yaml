@@ -518,6 +518,8 @@ template:
         unique_id: peblar_ev_charger_uptime
         device_class: timestamp
         icon: mdi:timer-outline
+        # Without the raw counter the result was "now", as if the charger had just booted
+        availability: "{{ states('sensor.peblar_ev_charger_uptime_raw') | is_number }}"
         state: >
           {{ (utcnow() - timedelta(seconds=states('sensor.peblar_ev_charger_uptime_raw') | int(0))).isoformat() }}
 

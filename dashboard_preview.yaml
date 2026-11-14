@@ -340,7 +340,7 @@ views:
           | Window | {{ t('sensor.ev_charging_window_start_time') }} → {{ t('sensor.ev_charging_window_end_time') }} (active: {{ yn(states('sensor.ev_charging_window_active')) }}) |
           | Price allowed (below max) | {{ yn(states('binary_sensor.ev_window_price_allowed')) }} |
           | Hours needed | {{ states('sensor.ev_hours_needed_for_charging') }} h |
-          | Cheapest hours in window | {{ states('sensor.ev_cheapest_hours_in_window') }} |
+          | Cheapest slots in window | {{ states('sensor.ev_cheapest_hours_in_window') }} |
           | Latest start | {{ t('sensor.ev_window_latest_start_time') }} |
           | In a cheapest slot now | {{ yn(states('sensor.ev_is_in_cheapest_window')) }} |
           | Enough hours in window | {{ yn(states('sensor.ev_sufficient_hours_to_charge_in_window')) }} (with known prices: {{ yn(states('sensor.ev_sufficient_known_hours_in_window')) }}) |
@@ -632,6 +632,7 @@ views:
                 - entity_id: "automation.ev_*notif*"
                 - entity_id: automation.ev_manual_override_reminder
                 - entity_id: automation.ev_which_car_at_plug_in
+                - entity_id: automation.ev_assisted_charging_above_max_price
                 - entity_id: automation.ev_phase_check_1_phase_car_while_a_3_phase_car_is_selected
             sort:
               method: friendly_name

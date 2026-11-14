@@ -656,6 +656,11 @@ automation:
                         entity_id: switch.peblar_ev_charger_charge
                         state: "off"
             sequence:
+              # Phase switch first. Stepping down from 3-phase, the 1-phase current (up to
+              # ~15 A) written before it stood on all three phases for a moment (~10 kW).
+              - action: switch.turn_on # force single phase charging
+                target:
+                  entity_id: switch.peblar_ev_charger_force_single_phase
               - action: number.set_value
                 target:
                   entity_id: number.peblar_ev_charger_charge_current_limit_ma
@@ -672,9 +677,6 @@ automation:
                   value: >
                     {% set ma = states('sensor.ev_available_charging_ma_single_phase') | int(6000) %}
                     {{ [ma, 6000] | max // 1000 }}
-              - action: switch.turn_on # force single phase charging
-                target:
-                  entity_id: switch.peblar_ev_charger_force_single_phase
               - action: switch.turn_on # allow charging
                 target:
                   entity_id: switch.peblar_ev_charger_charge
@@ -720,9 +722,14 @@ automation:
           # phase-mode state change that will never come.
           # Solar mode only: in assisted_battery the charger stays armed even at
           # phase mode 'stop' (see the ev_stop branch comment above).
+          # Also for solar_resume: manual override switched off, or the car plugged in, with
+          # the charger on and phase mode already 'stop' — ev_stop never fires then either,
+          # and the charger kept running from the grid at the 1-phase floor.
           - conditions:
               - condition: trigger
-                id: ev_mode_entry
+                id:
+                  - ev_mode_entry
+                  - solar_resume
             sequence:
               - if:
                   - condition: state
