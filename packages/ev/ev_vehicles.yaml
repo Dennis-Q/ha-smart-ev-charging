@@ -110,9 +110,12 @@ input_text:
   #   ev_carN_name                 shown in the car selector and notifications
   #   ev_carN_soc_entity           sensor, battery level %   e.g. sensor.skoda_elroq_battery_percentage
   #                                empty ⇒ guest (no car control)
-  #   ev_carN_charge_limit_entity  number, the car's own charge limit %, read and set
+  #   ev_carN_charge_limit_entity  the car's own charge limit %. A number: read and set
   #                                e.g. number.skoda_elroq_charge_limit / number.<car>_target_charge_level
-  #                                empty ⇒ the car keeps its own limit
+  #                                A sensor: read only, never set (an integration that only reports it);
+  #                                then binary_sensor.ev_car_limit_below_plan warns when it is too low.
+  #                                empty ⇒ the car keeps its own limit (binary_sensor.ev_car_stopped_early
+  #                                tells when the car stops below the target)
   #   ev_carN_start_entity         switch (turned on) or button (pressed) when force charging starts
   #                                e.g. switch.skoda_elroq_charging / button.<car>_start_charge
   #   ev_carN_connected_entity     binary_sensor, the car reports the cable plugged in; only
@@ -217,8 +220,9 @@ script:
     sequence:
       - variables:
           e: "{{ state_attr('sensor.ev_active_car', 'charge_limit_entity') or '' }}"
+      # Only a number can be set; a sensor in this field is read only
       - condition: template
-        value_template: "{{ e != '' and states(e) not in ['unknown', 'unavailable'] }}"
+        value_template: "{{ e.startswith('number.') and states(e) not in ['unknown', 'unavailable'] }}"
       - action: number.set_value
         target: { entity_id: "{{ e }}" }
         data:
@@ -308,7 +312,7 @@ template:
           {{ e != '' and states(e) | is_number }}
         state: "{{ states(state_attr('sensor.ev_active_car', 'soc_entity')) }}"
 
-      # The car's own charge limit = the state of its charge-limit number
+      # The car's own charge limit = the state of its charge-limit entity (number or sensor)
       - name: "EV Car Target SoC"
         unique_id: ev_car_target_soc
         unit_of_measurement: "%"
@@ -390,6 +394,52 @@ template:
           {{ e != '' and states(e) not in ['unknown', 'unavailable'] }}
         state: "{{ is_state(state_attr('sensor.ev_active_car', 'connected_entity'), 'on') }}"
 
+      # The car's own charge limit is below what the active mode wants: the car will stop
+      # early whatever the charger does. With a settable limit (a number) EV Validate
+      # Charging Limit corrects it within a minute, so this only stays on when that write
+      # did not work; with a read-only limit (a sensor) it is the only warning. 5 minutes,
+      # so a correction on its way does not raise it. Not while the mode has no limit of
+      # its own (limit_source car).
+      - name: "EV Car Limit Below Plan"
+        unique_id: ev_car_limit_below_plan
+        device_class: problem
+        icon: mdi:battery-alert-variant-outline
+        delay_on: "00:05:00"
+        state: >-
+          {% set t = states('sensor.ev_car_target_soc') %}
+          {% set x = states('sensor.ev_car_expected_limit') %}
+          {{ is_state('binary_sensor.ev_is_connected', 'on')
+             and is_state('input_boolean.ev_manual_override', 'off')
+             and state_attr('sensor.ev_expected_charging_limit', 'limit_source') not in [none, 'car']
+             and t | is_number and x | is_number and t | int < x | int }}
+        attributes:
+          car_limit: "{{ states('sensor.ev_car_target_soc') }}"
+          wanted: "{{ states('sensor.ev_car_expected_limit') }}"
+          settable: "{{ (state_attr('sensor.ev_active_car', 'charge_limit_entity') or '').startswith('number.') }}"
+
+      # The charger offers power in a full-power mode, but the car takes (almost) nothing
+      # for 10 minutes while it is still below the target: the car stopped by itself. Usual
+      # cause: its own charge limit is lower (not readable with a read-only car integration,
+      # e.g. the official Škoda one), or a charging timer in the car. Not in the solar modes,
+      # where little power is normal. 10 minutes: starting up and a phase switch take 1–2.
+      - name: "EV Car Stopped Early"
+        unique_id: ev_car_stopped_early
+        device_class: problem
+        icon: mdi:car-off
+        delay_on: "00:10:00"
+        state: >-
+          {% set soc = states('sensor.ev_car_soc') %}
+          {% set lim = states('sensor.ev_expected_charging_limit') %}
+          {{ is_state('binary_sensor.ev_is_connected', 'on')
+             and is_state('input_boolean.ev_manual_override', 'off')
+             and is_state('switch.peblar_ev_charger_charge', 'on')
+             and states('sensor.ev_charging_mode') in ['force', 'cheapest', 'window', 'assisted_force']
+             and states('sensor.peblar_ev_charger_power') | float(9999) < 300
+             and soc | is_number and lim | is_number and soc | float < lim | float - 1 }}
+        attributes:
+          soc: "{{ states('sensor.ev_car_soc') }}"
+          wanted: "{{ states('sensor.ev_expected_charging_limit') }}"
+
       # 'on' when the active car's SoC entity is set but does not exist, or when
       # car 1 (your own car) has none — hours needed, force once until full and
       # the charge-complete notification need it. Car 2/3 without a SoC entity
@@ -409,8 +459,8 @@ template:
 
 automation:
   # At start (and on input_text reload): empty never-set fields, give the slots
-  # names and sensible numbers, and fill car 1 with a MySkoda car
-  # (sensor.skoda_<car>_battery_percentage) while its SoC field is empty — a
+  # names and sensible numbers, and fill car 1 with a Škoda car (MySkoda or the
+  # official integration) while its SoC field is empty — a
   # fresh install, or the upgrade from the hard-wired Skoda entities. Only
   # fields whose entity exists are filled; once the SoC field is set this never
   # touches car 1's fields again.
@@ -477,14 +527,18 @@ automation:
           - action: input_text.set_value
             target: { entity_id: input_text.ev_car3_name }
             data: { value: "Guest" }
-      # Car 1 from MySkoda. A cloud integration can come up after us, so wait
-      # up to 5 minutes for it.
+      # Car 1 from a Škoda integration. A cloud integration can come up after us, so wait up
+      # to 5 minutes for it. MySkoda (sensor.skoda_<car>_battery_percentage; level, limit
+      # number, start switch, connected sensor) or the official Škoda integration ("skoda",
+      # read only: the battery sensor, and the cable sensor where it has one — found by
+      # device class, not by name). MySkoda wins when both are there: it can set the limit.
       - if:
           - condition: template
             value_template: "{{ states('input_text.ev_car1_soc_entity') | trim == '' }}"
         then:
           - wait_template: >-
-              {{ states.sensor | selectattr('entity_id', 'match', 'sensor\\.skoda_.+_battery_percentage$') | list | count > 0 }}
+              {{ states.sensor | selectattr('entity_id', 'match', 'sensor\\.skoda_.+_battery_percentage$') | list | count > 0
+                 or integration_entities('skoda') | select('match', 'sensor[.]') | select('is_state_attr', 'device_class', 'battery') | list | count > 0 }}
             timeout: "00:05:00"
           - variables:
               skoda_soc: >-
@@ -493,34 +547,60 @@ automation:
                    | reject('match', '.*_target_battery_percentage$')
                    | sort | first | default('') }}
               car: "{{ skoda_soc | replace('sensor.', '', 1) | replace('_battery_percentage', '') }}"
-          - if:
-              - condition: template
-                value_template: "{{ skoda_soc != '' }}"
-            then:
-              - repeat:
-                  for_each:
-                    - { field: input_text.ev_car1_soc_entity, entity: "sensor.CAR_battery_percentage" }
-                    - { field: input_text.ev_car1_charge_limit_entity, entity: "number.CAR_charge_limit" }
-                    - { field: input_text.ev_car1_start_entity, entity: "switch.CAR_charging" }
-                    - { field: input_text.ev_car1_connected_entity, entity: "binary_sensor.CAR_charger_connected" }
-                  sequence:
-                    - variables:
-                        entity: "{{ repeat.item.entity | replace('CAR', car) }}"
-                    - if:
-                        - condition: template
-                          value_template: "{{ states[entity] is not none }}"
-                      then:
-                        - action: input_text.set_value
-                          continue_on_error: true
-                          target: { entity_id: "{{ repeat.item.field }}" }
-                          data: { value: "{{ entity }}" }
-              - if:
-                  - condition: template
-                    value_template: "{{ states('input_text.ev_car1_name') | trim == '' }}"
-                then:
+              official_soc: >-
+                {{ integration_entities('skoda') | select('match', 'sensor[.]')
+                   | select('is_state_attr', 'device_class', 'battery') | sort | first | default('') }}
+              official_cable: >-
+                {{ integration_entities('skoda') | select('match', 'binary_sensor[.]')
+                   | select('is_state_attr', 'device_class', 'plug') | sort | first | default('') }}
+          - choose:
+              - conditions: "{{ skoda_soc != '' }}"
+                sequence:
+                  - repeat:
+                      for_each:
+                        - { field: input_text.ev_car1_soc_entity, entity: "sensor.CAR_battery_percentage" }
+                        - { field: input_text.ev_car1_charge_limit_entity, entity: "number.CAR_charge_limit" }
+                        - { field: input_text.ev_car1_start_entity, entity: "switch.CAR_charging" }
+                        - { field: input_text.ev_car1_connected_entity, entity: "binary_sensor.CAR_charger_connected" }
+                      sequence:
+                        - variables:
+                            entity: "{{ repeat.item.entity | replace('CAR', car) }}"
+                        - if:
+                            - condition: template
+                              value_template: "{{ states[entity] is not none }}"
+                          then:
+                            - action: input_text.set_value
+                              continue_on_error: true
+                              target: { entity_id: "{{ repeat.item.field }}" }
+                              data: { value: "{{ entity }}" }
+                  - if:
+                      - condition: template
+                        value_template: "{{ states('input_text.ev_car1_name') | trim == '' }}"
+                    then:
+                      - action: input_text.set_value
+                        target: { entity_id: input_text.ev_car1_name }
+                        data: { value: "{{ car | replace('_', ' ') | title }}" }
+              - conditions: "{{ official_soc != '' }}"
+                sequence:
                   - action: input_text.set_value
-                    target: { entity_id: input_text.ev_car1_name }
-                    data: { value: "{{ car | replace('_', ' ') | title }}" }
+                    continue_on_error: true
+                    target: { entity_id: input_text.ev_car1_soc_entity }
+                    data: { value: "{{ official_soc }}" }
+                  - if:
+                      - condition: template
+                        value_template: "{{ official_cable != '' and states('input_text.ev_car1_connected_entity') | trim == '' }}"
+                    then:
+                      - action: input_text.set_value
+                        continue_on_error: true
+                        target: { entity_id: input_text.ev_car1_connected_entity }
+                        data: { value: "{{ official_cable }}" }
+                  - if:
+                      - condition: template
+                        value_template: "{{ states('input_text.ev_car1_name') | trim == '' }}"
+                    then:
+                      - action: input_text.set_value
+                        target: { entity_id: input_text.ev_car1_name }
+                        data: { value: "{{ device_attr(official_soc, 'name_by_user') or device_attr(official_soc, 'name') or 'Car 1' }}" }
 
   # Keep the selector's options (enabled car names) and selection in line with
   # the active slot.

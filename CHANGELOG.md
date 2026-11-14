@@ -5,6 +5,16 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Ready for a read-only car integration** (the official Škoda integration in HA 2026.11 has no
+  settable charge limit and no start command; MySkoda keeps working as before):
+  - Car 1 is filled in from the official Škoda integration too (battery sensor, and the cable sensor
+    where it has one), while its SoC field is empty. MySkoda wins when both are installed.
+  - The car's charge-limit field also takes a **sensor**: read only, never set. New
+    `binary_sensor.ev_car_limit_below_plan` + notification when the car's own limit is below what
+    the active mode charges to (also when setting a number did not work, after 5 minutes).
+  - New `binary_sensor.ev_car_stopped_early` + notification: the charger offers power in force /
+    cheapest / window / assisted force, the car takes under 300 W for 10 minutes and is still
+    below the target. For a car whose limit cannot be read: its own limit is probably lower.
 - **Max price check, once a month:** on the 1st at the reminder time a notification says which max
   price is in force and whether its switch is on (`automation.ev_max_price_check_notification`).
 - `sensor.ev_car_info` also gives `car_name`, the active car, for the HBA dashboard.

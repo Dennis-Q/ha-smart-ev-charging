@@ -755,6 +755,10 @@ automation:
           {% set expected_limit = states('sensor.ev_car_expected_limit') %}
           {{ current_limit | is_number and expected_limit | is_number and
              current_limit | int != expected_limit | int }}
+      # A read-only limit (a sensor in the car's charge-limit field) cannot be corrected:
+      # binary_sensor.ev_car_limit_below_plan warns when it is too low
+      - condition: template
+        value_template: "{{ (state_attr('sensor.ev_active_car', 'charge_limit_entity') or '').startswith('number.') }}"
       - variables:
           expected_limit: "{{ states('sensor.ev_car_expected_limit') | int }}"
           current_limit: "{{ states('sensor.ev_car_target_soc') | int }}"

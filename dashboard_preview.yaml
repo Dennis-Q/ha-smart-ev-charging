@@ -570,7 +570,9 @@ views:
 
           **Charge limit number**: the car's own charge limit; read, and set to the
           limit of the active mode (rounded and clamped to what the number accepts).
-          Empty = the car keeps its own limit.
+          A sensor works too: it is only read, and you are warned when it is below
+          the mode's limit. Empty = the car keeps its own limit; you are told when
+          the car stops below the target.
 
           **Start charging**: a switch (turned on) or button (pressed) when force
           charging starts. **Connected sensor**: the car's own "plugged in";

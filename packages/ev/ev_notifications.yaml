@@ -13,6 +13,8 @@
 #   • ev_power_entity_unit_mismatch        — configured power entity reports kW, not W
 #   • ev_notify_assisted_over_price        — an assistant plans grid charging above the max price (Charge / Skip)
 #   • ev_notify_max_price_check            — on the 1st of the month: which max price is in force
+#   • ev_notify_car_limit_below_plan       — the car's own charge limit is below the active mode's limit
+#   • ev_notify_car_stopped_early          — the car took no power for 10 min while below the target
 #
 # Helpers and template sensors these depend on stay with their domain:
 #   input_boolean.ev_notifications_enabled, input_text.ev_notify_entity_id and
@@ -573,6 +575,50 @@ automation:
           - action: persistent_notification.dismiss
             data:
               notification_id: ev_power_entity_unit_mismatch
+
+  # The car's own charge limit is below what the active mode wants
+  # (binary_sensor.ev_car_limit_below_plan: read-only limit, or setting it did not work)
+  - id: ev_notify_car_limit_below_plan
+    alias: "EV: Car limit below plan notification"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_car_limit_below_plan
+        to: "on"
+    actions:
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: car limit below the plan"
+          message: >-
+            The car's own charge limit is {{ state_attr('binary_sensor.ev_car_limit_below_plan', 'car_limit') }} %,
+            charging is planned to {{ state_attr('binary_sensor.ev_car_limit_below_plan', 'wanted') }} %.
+            The car will stop early{{ ' (setting the limit did not work)' if state_attr('binary_sensor.ev_car_limit_below_plan', 'settable') == true else '' }}.
+            Raise it in the car or its app.
+          tag: ev_car_limit
+          color: orange
+          priority: high
+
+  # The car stopped by itself below the target (binary_sensor.ev_car_stopped_early)
+  - id: ev_notify_car_stopped_early
+    alias: "EV: Car stopped early notification"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.ev_car_stopped_early
+        to: "on"
+    actions:
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: car stopped early"
+          message: >-
+            The car stopped at {{ state_attr('binary_sensor.ev_car_stopped_early', 'soc') }} %,
+            charging is planned to {{ state_attr('binary_sensor.ev_car_stopped_early', 'wanted') }} %.
+            Its own charge limit is probably lower, or a timer in the car holds it. Check the car or its app.
+          tag: ev_car_limit
+          color: orange
+          priority: high
 
   # Once a month, on the 1st at the reminder time: which max price is in force. It rarely
   # changes, so it is easy to forget (HBA's car messages do not show it). Stays until dismissed.
