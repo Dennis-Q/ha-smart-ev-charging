@@ -12,6 +12,7 @@
 #   • ev_notify_unexpected_grid_charging / _resolved — solar session pulling from the grid
 #   • ev_power_entity_unit_mismatch        — configured power entity reports kW, not W
 #   • ev_notify_assisted_over_price        — an assistant plans grid charging above the max price (Charge / Skip)
+#   • ev_notify_max_price_check            — on the 1st of the month: which max price is in force
 #
 # Helpers and template sensors these depend on stay with their domain:
 #   input_boolean.ev_notifications_enabled, input_text.ev_notify_entity_id and
@@ -572,6 +573,29 @@ automation:
           - action: persistent_notification.dismiss
             data:
               notification_id: ev_power_entity_unit_mismatch
+
+  # Once a month, on the 1st at the reminder time: which max price is in force. It rarely
+  # changes, so it is easy to forget (HBA's car messages do not show it). Stays until dismissed.
+  - id: ev_notify_max_price_check
+    alias: "EV: Max price check notification"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: template
+        value_template: >-
+          {% set t = states('input_datetime.ev_assisted_reminder')[:5] %}
+          {{ now().day == 1 and now().strftime('%H:%M') == ('20:00' if t in ['00:00', 'unkno', 'unava', ''] else t) }}
+    actions:
+      - action: script.ev_notify_dispatch
+        data:
+          title: "Car: max price check"
+          message: >-
+            Max price is € {{ states('input_number.ev_window_charging_max_price') }}/kWh
+            ({{ 'on' if is_state('input_boolean.ev_window_max_price_enabled', 'on') else 'off: no limit' }}).
+            Still right?
+          tag: ev_max_price_check
+          color: blue
+          priority: normal
 
   # An assistant plans grid charging above the max price (binary_sensor.ev_assisted_over_price):
   # asked after a new plan or plug-in, and again at input_datetime.ev_assisted_reminder while

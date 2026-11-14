@@ -5,6 +5,8 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Max price check, once a month:** on the 1st at the reminder time a notification says which max
+  price is in force and whether its switch is on (`automation.ev_max_price_check_notification`).
 - `sensor.ev_car_info` also gives `car_name`, the active car, for the HBA dashboard.
 - **An assistant can decide for the car (HBA: Planned, Timed EV charge).** New switch
   `input_boolean.ev_follow_assisted` (off by default), field `input_text.ev_assisted_entity` (filled in
