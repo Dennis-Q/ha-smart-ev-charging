@@ -70,6 +70,12 @@ All notable changes to this project will be documented here.
 - The charging plan follows a change of the max price or its switch at once (was at the next quarter).
 - Hours needed is rounded to 2 decimals (2.02 h became 2.0 h and the plan was one slot short).
 - `sensor.peblar_ev_charger_uptime` is unavailable without the raw counter (it showed "now").
+- The notify action suggestions only list the mobile app's own phones (every notify entity, e.g.
+  Telegram, was shown as a `notify.mobile_app_…` action that does not exist).
+- "Charging complete" no longer fires when another car is selected during charging; a guest that
+  is still selected after a restart does not switch one-time force charge on again.
+- The notifications switch is checked in one place, `script.ev_notify_dispatch`; the seven
+  automations that also checked it themselves no longer do. No change in what is sent.
 - Dashboards: "Assisted charging above max price" is in the notification automations list; *Up since*
   label in the classic dashboard; *Cheapest slots in window* in the preview's debug table.
 - **Fewer car charge-limit writes.** Each write is a cloud command to the car. The limit check now

@@ -130,6 +130,12 @@ automation:
         value_template: >-
           {% set limit = states('sensor.ev_expected_charging_limit') | int(101) %}
           {{ trigger.from_state.state | float(0) < limit <= trigger.to_state.state | float(0) }}
+      # Not when another car was just selected: its SoC replaces the previous car's and a
+      # jump from below to above the limit looked like "limit reached".
+      - condition: template
+        value_template: >-
+          {{ states.sensor.ev_active_car is none
+             or now() - states.sensor.ev_active_car.last_changed > timedelta(minutes=1) }}
       - condition: template
         value_template: >-
           {{ is_state('binary_sensor.ev_is_charging', 'on')
@@ -163,10 +169,6 @@ automation:
           - "error"
           - "fault"
           - "invalid"
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - action: script.ev_notify_dispatch
         data:
@@ -289,10 +291,6 @@ automation:
         entity_id: input_boolean.ev_manual_override
         to: "on"
         for: "04:00:00"
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - action: script.ev_notify_dispatch
         data:
@@ -322,10 +320,6 @@ automation:
       - trigger: state
         entity_id: binary_sensor.ev_unexpected_grid_charging
         to: "on"
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - variables:
           mode: "{{ states('sensor.ev_charging_mode') }}"
@@ -344,6 +338,11 @@ automation:
           tag: ev_unexpected_grid_charging
           color: red
           priority: high
+      # The push above goes through ev_notify_dispatch, which checks the notifications
+      # switch; the bell notification below follows the same switch.
+      - condition: state
+        entity_id: input_boolean.ev_notifications_enabled
+        state: "on"
       - action: persistent_notification.create
         data:
           notification_id: ev_unexpected_grid_charging
@@ -366,9 +365,6 @@ automation:
         to: "off"
         from: "on"
     conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
       # Skip the push when manual override caused the binary_sensor to clear —
       # the user already knows why it stopped.
       - condition: state
@@ -600,9 +596,6 @@ automation:
       - condition: state
         entity_id: input_select.ev_assisted_over_price
         state: "Ask"
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - variables:
           e: "{{ states('input_text.ev_assisted_entity') | trim }}"
@@ -681,7 +674,8 @@ script:
           Only for faults that toggle must never silence, e.g. a charger that refuses to stop.
         default: false
     sequence:
-      # The one place the notifications switch is checked for every EV notification
+      # The one place the notifications switch is checked for every EV notification (the
+      # automations no longer check it themselves)
       - condition: template
         value_template: "{{ critical | default(false) in [true, 'true', 'True'] or is_state('input_boolean.ev_notifications_enabled', 'on') }}"
       # Field defaults are only UI hints — a caller that leaves a field out gets

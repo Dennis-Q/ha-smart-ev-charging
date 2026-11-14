@@ -601,9 +601,6 @@ automation:
       - condition: state
         entity_id: binary_sensor.ev_multiple_cars
         state: "on"
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - variables:
           cars: "{{ state_attr('sensor.ev_active_car', 'cars') or [] }}"
@@ -655,6 +652,7 @@ automation:
         value_template: >-
           {{ trigger.from_state is not none and trigger.to_state is not none
              and trigger.to_state.attributes.guest in [true, 'true', 'True']
+             and trigger.from_state.attributes.slot is defined
              and trigger.from_state.attributes.slot != trigger.to_state.attributes.slot }}
       - condition: state
         entity_id: input_boolean.ev_force_charge_permanent
@@ -700,10 +698,6 @@ automation:
              and states('sensor.peblar_ev_charger_power_phase_2') | float(0) < 100
              and states('sensor.peblar_ev_charger_power_phase_3') | float(0) < 100 }}
         for: { minutes: 3 }
-    conditions:
-      - condition: state
-        entity_id: input_boolean.ev_notifications_enabled
-        state: "on"
     actions:
       - variables:
           candidates: >-
