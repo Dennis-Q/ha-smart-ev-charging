@@ -5,6 +5,9 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Installer warns about stray files:** a Peblar Modbus file that is not this project's (it is never
+  updated and defines the charger a second time), and two `ev_*.yaml` files with the same name under
+  `packages/` (Home Assistant loads only one).
 - **Charger unreachable (Peblar Modbus file):** `binary_sensor.peblar_ev_charger_unreachable` turns on
   when the charger has not answered over Modbus for 90 s (longer than an HA restart). The EV project
   shows a banner and sends a notification for it.

@@ -124,7 +124,11 @@ Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/mars
 | `ev_assisted_entity` (filled in by Apply defaults) | `binary_sensor.hba_ev_assist` | While **Follow assisted** is on and HBA is in charge (*Timed EV charge*, or *Planned* with *Plan the car*): `sensor.ev_charging_mode` shows `assisted_force`, `assisted_battery`, `assisted_wait` or `solar` (displayed as `assisted_solar`), whatever your solar, window and cheapest switches say. Force charge always wins. |
 
 In the other direction HBA reads `sensor.ev_car_info` (the active car: SoC, capacity, connected, max price, departure), `binary_sensor.ev_is_charging` and
-`binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). For HBA's per-phase
+`binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). `ev_is_charging` is the
+charger's last real status: while the charger cannot be read (an HA restart, the charger or the
+network down) it keeps what it was, so HBA never takes a charging car for not charging. With the
+Peblar Modbus file, `binary_sensor.peblar_ev_charger_unreachable` (banner + notification) says when
+the charger has not answered for 90 s. For HBA's per-phase
 limits you can define `sensor.ev_charger_power` (or `_l1`..`_l3`) in HBA's `hba_config.yaml` from
 `sensor.peblar_ev_charger_power` / the Peblar per-phase Modbus sensors. The Peblar's own load
 balancing keeps protecting the grid connection; HBA's main fuse limit only limits the batteries.
