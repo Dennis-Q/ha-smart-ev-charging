@@ -30,6 +30,18 @@ views:
                   - condition: state
                     entity: binary_sensor.peblar_ev_charger_active_errors
                     state: "on"
+          # ── Red banner: charger unreachable ─────────────────────────────────────
+          - type: markdown
+            content: >-
+              <ha-alert alert-type="error"><strong>Charger unreachable</strong><br>The
+              charger has not answered for over a minute. Its last status
+              ({{ 'charging' if is_state('binary_sensor.ev_is_charging', 'on') else 'not charging' }})
+              stays until it answers again, and commands do not reach it. Check the
+              charger and its network connection.</ha-alert>
+            visibility:
+              - condition: state
+                entity: binary_sensor.peblar_ev_charger_unreachable
+                state: "on"
           # ── Red banner: defaults not applied ────────────────────────────────────
           # ev_power_buffer_watts == -7000 (the helper's min) is treated as the
           # "user has never run apply_defaults" signal. After apply_defaults it

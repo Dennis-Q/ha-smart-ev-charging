@@ -228,10 +228,30 @@ script:
 ## Templates & sensors
 
 template:
-  - binary_sensor:
+  # The charger's last real status. Only a state the charger reports changes it: while the
+  # charger cannot be read (unknown / unavailable -- an HA restart, the charger or the network
+  # down) it keeps what it was, and HA restores it after a restart. It used to read "off"
+  # then: wrong while the car charged (prod 2026-11-14, HA stopping: off at 10.8 kW), and
+  # anything that reads it -- a home battery that must not discharge into the car -- took the
+  # car for not charging. That the charger cannot be read is its own sensor:
+  # binary_sensor.peblar_ev_charger_unreachable (ev_peblar_modbus.yaml).
+  - triggers:
+      - trigger: state
+        entity_id: sensor.peblar_ev_charger_state
+        not_to: ["unknown", "unavailable"]
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    binary_sensor:
       - name: "EV is Charging"
         unique_id: ev_is_charging
-        state: "{{ is_state('sensor.peblar_ev_charger_state', 'charging') }}"
+        state: >-
+          {%- set s = states('sensor.peblar_ev_charger_state') -%}
+          {{ s == 'charging' if s not in ['unknown', 'unavailable']
+             else (this.state | default('off')) == 'on' }}
+
+  - binary_sensor:
       # Unavailable (not off) while the charger state is unknown: at every HA restart
       # the Modbus registers are unreadable for ~30 s, and 'off' then 'on' looked like
       # an unplug + plug-in ("which car?" notification, plug-in triggers; prod 2026-10-25,

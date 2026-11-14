@@ -5,6 +5,11 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Charger unreachable (Peblar Modbus file):** `binary_sensor.peblar_ev_charger_unreachable` turns on
+  when the charger has not answered over Modbus for 90 s (longer than an HA restart). The EV project
+  shows a banner and sends a notification for it.
+- **The charging status keeps its last real value:** `binary_sensor.ev_is_charging` now keeps the charger's last real status while the charger cannot
+  be read, also over an HA restart; it used to read "off" then, also while the car was charging.
 - **Ready for a read-only car integration** (the official Škoda integration in HA 2026.11 has no
   settable charge limit and no start command; MySkoda keeps working as before):
   - Car 1 is filled in from the official Škoda integration too (battery sensor, and the cable sensor

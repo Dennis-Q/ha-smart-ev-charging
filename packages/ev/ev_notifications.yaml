@@ -382,6 +382,64 @@ automation:
           color: green
           priority: normal
 
+  # binary_sensor.peblar_ev_charger_unreachable (ev_peblar_modbus.yaml): the charger has not
+  # answered over Modbus for 90 s. Without that file the sensor does not exist and nothing fires.
+  - id: ev_notify_charger_unreachable
+    alias: "EV Notify Charger Unreachable"
+    description: "Push + persistent alert when the charger cannot be read for 90+ s"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.peblar_ev_charger_unreachable
+        to: "on"
+    actions:
+      - variables:
+          was: "{{ 'charging' if is_state('binary_sensor.ev_is_charging', 'on') else 'not charging' }}"
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: charger unreachable"
+          message: >-
+            The charger has not answered for over a minute. Its last status was "{{ was }}";
+            that stays until it answers again, and commands do not reach it. Check the
+            charger and its network connection.
+          tag: ev_charger_unreachable
+          color: red
+          priority: high
+      - condition: state
+        entity_id: input_boolean.ev_notifications_enabled
+        state: "on"
+      - action: persistent_notification.create
+        data:
+          notification_id: ev_charger_unreachable
+          title: "EV: charger unreachable"
+          message: >-
+            The charger has not answered for over a minute. Its last status was
+            **{{ was }}**; that stays until it answers again, and commands do not reach it.
+            Check the charger and its network connection.
+
+  - id: ev_notify_charger_unreachable_resolved
+    alias: "EV Notify Charger Unreachable Resolved"
+    description: "Push when the charger answers again; removes the persistent notification"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.peblar_ev_charger_unreachable
+        from: "on"
+        to: "off"
+    actions:
+      - action: persistent_notification.dismiss
+        data:
+          notification_id: ev_charger_unreachable
+      - action: script.ev_notify_dispatch
+        data:
+          title: "EV: charger answers again"
+          message: "The charger can be read again (status: {{ states('sensor.peblar_ev_charger_state') | replace('_', ' ') }})."
+          tag: ev_charger_unreachable
+          color: green
+          priority: normal
+
 # ── Recorder exclusions ───────────────────────────────────────────────────────
 # Skip high-frequency / debug-only EV entities from the history database.
 # Other packages (e.g. a home battery package) may add their own recorder
