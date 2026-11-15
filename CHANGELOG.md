@@ -5,6 +5,10 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Car SoC rides out short gaps:** `sensor.ev_car_soc` keeps the last real value for up to 15 minutes
+  while the car integration has none (attribute `held`), also across a restart. The official Škoda
+  integration was unavailable ~10 minutes every hour (API rate limit) and ~2 minutes after a restart:
+  the car read 0 % and HBA Planned dropped it from the plan each time.
 - **Installer warns about stray files:** a Peblar Modbus file that is not this project's (it is never
   updated and defines the charger a second time), and two `ev_*.yaml` files with the same name under
   `packages/` (Home Assistant loads only one).

@@ -4,7 +4,7 @@
 # capacity, max charge power and phases. The rest of the project never reads a
 # car integration directly: it reads the active car through
 #   sensor.ev_active_car            name; attributes slot, guest, entity fields
-#   sensor.ev_car_soc               battery level %       (unavailable without SoC entity)
+#   sensor.ev_car_soc               battery level %       (keeps the last value 15 min; unavailable without SoC entity)
 #   sensor.ev_car_target_soc        the car's own limit % (state of its charge-limit number)
 #   sensor.ev_car_expected_limit    expected limit rounded/clamped to that number's min/max/step
 #   sensor.ev_car_battery_capacity  kWh
@@ -302,16 +302,6 @@ template:
             {% set v = states('input_text.ev_car' ~ n ~ '_connected_entity') | trim %}
             {{ v if v not in ['unknown', 'unavailable'] else '' }}
 
-      - name: "EV Car SoC"
-        unique_id: ev_car_soc
-        unit_of_measurement: "%"
-        device_class: battery
-        state_class: measurement
-        availability: >-
-          {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
-          {{ e != '' and states(e) | is_number }}
-        state: "{{ states(state_attr('sensor.ev_active_car', 'soc_entity')) }}"
-
       # The car's own charge limit = the state of its charge-limit entity (number or sensor)
       - name: "EV Car Target SoC"
         unique_id: ev_car_target_soc
@@ -357,6 +347,46 @@ template:
              low (code review 2026-10-27) #}
           {% set charger = charger / 3 if is_state('binary_sensor.ev_car_single_phase', 'on') else charger %}
           {{ ([car, charger] | min) | round(2) }}
+
+  # The active car's SoC. Keeps the last real value for up to 15 minutes while the car
+  # integration has none (unavailable / unknown) for the same entity: the official Škoda
+  # integration hit its API rate limit every hour for ~10 minutes (prod 2026-11-14/15) and
+  # needs ~2 minutes after a restart -- the SoC read 0 % then and HBA Planned dropped the
+  # car from its plan and took it back each time. Trigger-based so it survives a restart
+  # (seen = when the value was last real). Every 30 s: a car integration updates every few
+  # minutes at most. Attribute held = true while it shows the kept value.
+  - triggers:
+      - trigger: time_pattern
+        seconds: "/30"
+      - trigger: state
+        entity_id: sensor.ev_active_car
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    sensor:
+      - name: "EV Car SoC"
+        unique_id: ev_car_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        availability: >-
+          {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+          {% set a = this.attributes if this is defined and this.attributes is defined else {} %}
+          {{ e != '' and (states(e) | is_number
+             or (this.state | is_number and a.get('entity') == e
+                 and as_timestamp(now()) - a.get('seen', 0) | float(0) < 900)) }}
+        state: >-
+          {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+          {{ states(e) if e != '' and states(e) | is_number else this.state }}
+        attributes:
+          entity: "{{ state_attr('sensor.ev_active_car', 'soc_entity') or '' }}"
+          seen: >-
+            {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+            {{ as_timestamp(now()) | int if e != '' and states(e) | is_number else this.attributes.get('seen', 0) }}
+          held: >-
+            {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
+            {{ not (e != '' and states(e) | is_number) }}
 
   # Last own (non-guest) car, to go back to when a guest unplugs. Trigger-based so
   # it survives a restart without another helper.
