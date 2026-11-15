@@ -6,7 +6,7 @@ All notable changes to this project will be documented here.
 
 ### Added
 - **Car SoC rides out short gaps:** `sensor.ev_car_soc` keeps the last real value for up to 15 minutes
-  while the car integration has none (attribute `held`), also across a restart. The official Škoda
+  while the car integration has none (attributes `held`, `lost` = since when), also across a restart; a recorder row only when the SoC changes. The official Škoda
   integration was unavailable ~10 minutes every hour (API rate limit) and ~2 minutes after a restart:
   the car read 0 % and HBA Planned dropped it from the plan each time.
 - **Installer warns about stray files:** a Peblar Modbus file that is not this project's (it is never

@@ -353,8 +353,11 @@ template:
   # integration hit its API rate limit every hour for ~10 minutes (prod 2026-11-14/15) and
   # needs ~2 minutes after a restart -- the SoC read 0 % then and HBA Planned dropped the
   # car from its plan and took it back each time. Trigger-based so it survives a restart
-  # (seen = when the value was last real). Every 30 s: a car integration updates every few
-  # minutes at most. Attribute held = true while it shows the kept value.
+  # (lost = when the integration's value went away; none while it has one, so the attributes
+  # do not change every 30 s and the recorder only gets a row when the SoC changes -- a
+  # timestamp of the last real value wrote a row every 30 s, prod 2026-11-15). Every 30 s: a
+  # car integration updates every few minutes at most. Attribute held = true while it shows
+  # the kept value.
   - triggers:
       - trigger: time_pattern
         seconds: "/30"
@@ -373,17 +376,19 @@ template:
         availability: >-
           {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
           {% set a = this.attributes if this is defined and this.attributes is defined else {} %}
+          {%- set lost = a.get('lost') -%}
           {{ e != '' and (states(e) | is_number
              or (this.state | is_number and a.get('entity') == e
-                 and as_timestamp(now()) - a.get('seen', 0) | float(0) < 900)) }}
+                 and (lost is none or as_timestamp(now()) - lost | float(0) < 900))) }}
         state: >-
           {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
           {{ states(e) if e != '' and states(e) | is_number else this.state }}
         attributes:
           entity: "{{ state_attr('sensor.ev_active_car', 'soc_entity') or '' }}"
-          seen: >-
+          lost: >-
             {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
-            {{ as_timestamp(now()) | int if e != '' and states(e) | is_number else this.attributes.get('seen', 0) }}
+            {% set a = this.attributes if this is defined and this.attributes is defined else {} %}
+            {{ none if e != '' and states(e) | is_number else (a.get('lost') or (as_timestamp(now()) | int)) }}
           held: >-
             {% set e = state_attr('sensor.ev_active_car', 'soc_entity') or '' %}
             {{ not (e != '' and states(e) | is_number) }}
