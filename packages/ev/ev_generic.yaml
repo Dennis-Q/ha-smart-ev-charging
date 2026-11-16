@@ -186,7 +186,9 @@ script:
             - input_boolean.ev_window_max_price_enabled
       - action: input_boolean.turn_on
         target:
-          entity_id: input_boolean.ev_notifications_enabled
+          entity_id:
+            - input_boolean.ev_notifications_enabled
+            - input_boolean.ev_car1_compensated
       - action: input_datetime.set_datetime
         target: { entity_id: input_datetime.ev_assisted_reminder }
         data: { time: "20:00:00" }
@@ -441,6 +443,14 @@ template:
           known: "{{ states('sensor.ev_car_soc') | float(-1) >= 0 and state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True'] }}"
           car_name: "{{ states('sensor.ev_active_car') }}"
           connected: "{{ is_state('binary_sensor.ev_is_connected', 'on') }}"
+          # When the cable went in (Unix time), 0 while not connected
+          connected_since: >-
+            {% set c = states.binary_sensor.ev_is_connected %}
+            {{ (as_timestamp(c.last_changed) | int) if c is not none and c.state == 'on' else 0 }}
+          # Home charging of this car is compensated per kWh at the max price (per car slot)
+          compensated: >-
+            {{ state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True']
+               and is_state('input_boolean.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_compensated', 'on') }}
           following: "{{ is_state('input_boolean.ev_follow_assisted', 'on') }}"
           capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) }}"
           efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(92) / 100, 0.5] | max }}"

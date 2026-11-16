@@ -5,6 +5,10 @@ All notable changes to this project will be documented here.
 ## [0.2.19] – unreleased
 
 ### Added
+- **Compensated charging per car:** `input_boolean.ev_car1_compensated` (2, 3): home charging of that car
+  is compensated per kWh at the max price (e.g. by an employer). Car 1 is on after Apply defaults.
+  `sensor.ev_car_info` gets `compensated` (the active car; a guest never) and `connected_since` (when
+  the cable went in). HBA's Planned uses both for charging the car from the home batteries.
 - **Car SoC rides out short gaps:** `sensor.ev_car_soc` keeps the last real value for up to 15 minutes
   while the car integration has none (attributes `held`, `lost` = since when), also across a restart; a recorder row only when the SoC changes. The official Škoda
   integration was unavailable ~10 minutes every hour (API rate limit) and ~2 minutes after a restart:

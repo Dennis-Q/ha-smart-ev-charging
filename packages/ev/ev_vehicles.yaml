@@ -44,6 +44,19 @@ input_boolean:
   ev_car3_single_phase:
     name: "EV Car 3 charges on 1 phase"
     icon: mdi:sine-wave
+  # On: charging this car at home is compensated per kWh (e.g. by an employer) at the max price
+  # (input_number.ev_window_charging_max_price). An assistant (HBA) uses it to value energy it
+  # gives the car beyond what the car would otherwise charge from the grid: compensated = the
+  # max price, else the cheapest known grid price. Car 1 is on after Apply defaults.
+  ev_car1_compensated:
+    name: "EV Car 1 charging is compensated"
+    icon: mdi:cash-check
+  ev_car2_compensated:
+    name: "EV Car 2 charging is compensated"
+    icon: mdi:cash-check
+  ev_car3_compensated:
+    name: "EV Car 3 charging is compensated"
+    icon: mdi:cash-check
 
 input_number:
   # Internal: the active slot. input_select.ev_active_car is only its face —
