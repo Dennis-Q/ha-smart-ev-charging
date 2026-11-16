@@ -470,6 +470,8 @@ views:
                 name: Max charge power
               - entity: input_boolean.ev_car1_single_phase
                 name: Charges on 1 phase
+              - entity: input_boolean.ev_car1_compensated
+                name: Charging is compensated (max price per kWh)
               - type: divider
               - entity: input_text.ev_car1_soc_entity
                 name: SoC sensor (required)
@@ -513,6 +515,8 @@ views:
                     name: Max charge power
                 - entity: input_boolean.ev_car2_single_phase
                   name: Charges on 1 phase
+                - entity: input_boolean.ev_car2_compensated
+                  name: Charging is compensated (max price per kWh)
                 - type: divider
                 - entity: input_text.ev_car2_soc_entity
                   name: SoC sensor (empty = guest)
@@ -556,6 +560,8 @@ views:
                     name: Max charge power
                 - entity: input_boolean.ev_car3_single_phase
                   name: Charges on 1 phase
+                - entity: input_boolean.ev_car3_compensated
+                  name: Charging is compensated (max price per kWh)
                 - type: divider
                 - entity: input_text.ev_car3_soc_entity
                   name: SoC sensor (empty = guest)
