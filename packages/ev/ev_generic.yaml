@@ -97,7 +97,7 @@ input_select:
       - "Ask"
       - "Charge"
       - "Skip"
-    icon: mdi:cash-alert
+    icon: mdi:cash-remove
 
 input_datetime:
   # When to ask again about charging above the max price. Never set (00:00) = 20:00.
@@ -105,7 +105,7 @@ input_datetime:
     name: "EV Assisted reminder time"
     has_date: false
     has_time: true
-    icon: mdi:bell-clock
+    icon: mdi:bell-ring
   ev_force_charge_timeout:
     name: "EV Force Charge Timeout"
     has_date: true
@@ -345,7 +345,7 @@ template:
       # (ev_notifications.yaml). No answer = it charges.
       - name: "EV Assisted Over Price"
         unique_id: ev_assisted_over_price
-        icon: mdi:cash-alert
+        icon: mdi:cash-remove
         state: >-
           {{ is_state('binary_sensor.ev_following_assisted', 'on')
              and state_attr(states('input_text.ev_assisted_entity') | trim, 'over_price_kwh') | float(0) > 0.1 }}
