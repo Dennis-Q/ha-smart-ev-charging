@@ -374,7 +374,7 @@ template:
           {% endif %}
 
       # Calculate hours needed to EV charge (window)
-      # Requires the car SoC (sensor.ev_car_soc ← input_text.ev_car_soc_entity)
+      # Requires the car SoC (sensor.ev_car_soc ← the active car's input_text.ev_car<N>_soc_entity)
 
       - name: "EV Hours Needed For Charging"
         unique_id: ev_hours_needed_for_charging
