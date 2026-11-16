@@ -456,6 +456,8 @@ template:
           efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(92) / 100, 0.5] | max }}"
           over_price: "{{ states('input_select.ev_assisted_over_price') }}"
           charge_kw: "{{ states('sensor.ev_car_max_power') | float(11) }}"
+          # Phases the active car charges on (1 or 3); HBA Planned counts the 6 A minimum with it
+          phases: "{{ 1 if is_state('binary_sensor.ev_car_single_phase', 'on') else 3 }}"
           max_price: "{{ states('input_number.ev_window_charging_max_price') | float(0) }}"
           max_price_on: "{{ is_state('input_boolean.ev_window_max_price_enabled', 'on') }}"
           # Departure: the next end of the charging window
