@@ -94,7 +94,8 @@ template:
       - variables:
           source: >-
             {%- set e = states('input_text.ev_price_entity') | trim -%}
-            {{ e if e not in ['', 'unknown', 'unavailable'] else 'sensor.frank_energie_prices_current_electricity_price_all_in' }}
+            {{ e if e not in ['', 'unknown', 'unavailable']
+                else 'sensor.frank_energie_prices_current_electricity_price_all_in' }}
           fresh: >-
             {%- set raw = state_attr(source, 'prices') -%}
             {#- De-duplicate by slot timestamp, keeping the first occurrence.
@@ -129,7 +130,8 @@ template:
         state: >-
           {%- set prev = this.attributes.get('slots', []) -%}
           {%- set step = 3600 // (this.attributes.get('slots_per_hour', 1) | int(1)) -%}
-          {{ fresh | length if fresh | length > 0 else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list | length }}
+          {{ fresh | length if fresh | length > 0
+              else prev | selectattr('ts', '>', as_timestamp(now()) - step) | list | length }}
         attributes:
           source: "{{ source }}"
           # true while the source gives no prices; the slots are then the kept
@@ -279,7 +281,8 @@ template:
                              | sort(attribute='price') -%}
               {%- set ns = namespace(out=[]) -%}
               {%- for s in (keep + rest[:n - keep | length]) | sort(attribute='ts') -%}
-                {%- set ns.out = ns.out + [{'ts': s.ts, 'time': s.ts | timestamp_custom('%Y-%m-%d %H:%M:%S'), 'price': s.price}] -%}
+                {%- set ns.out = ns.out
+                    + [{'ts': s.ts, 'time': s.ts | timestamp_custom('%Y-%m-%d %H:%M:%S'), 'price': s.price}] -%}
               {%- endfor -%}
               {{ ns.out | to_json }}
             {%- endif -%}
@@ -461,7 +464,8 @@ template:
             {% set known = slots | selectattr('ts', '>=', ws) | selectattr('ts', '<', we) | list %}
             {# Slots above the max price (when on) never charge, so they do not count #}
             {% if is_state('input_boolean.ev_window_max_price_enabled', 'on') %}
-              {% set known = known | selectattr('price', '<=', states('input_number.ev_window_charging_max_price') | float(-999)) | list %}
+              {% set known = known | selectattr('price', '<=',
+                  states('input_number.ev_window_charging_max_price') | float(-999)) | list %}
             {% endif %}
             {{ (known | length >= ((hours_needed * pph) | round(0, 'ceil') | int)) | lower }}
           {% endif %}
