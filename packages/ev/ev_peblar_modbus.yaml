@@ -715,7 +715,8 @@ template:
               entity_id: script.peblar_ev_charger_stop
           - variables:
               limit: >-
-                {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000, 6000] | max }}
+                {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000,
+                    6000] | max }}
           - service: modbus.write_register
             data:
               hub: peblar
