@@ -144,11 +144,13 @@ template:
           {% set charger_power = states('sensor.peblar_ev_charger_power') | float(0) %}
           {% set buffer = states('input_number.ev_power_buffer_watts') | float(0) %}
           {% set batt_e = states('input_text.ev_home_battery_power_entity') | trim %}
-          {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none'] else 0 %}
+          {% set batt_power = states(batt_e) | float(0) if batt_e not in ['', 'unknown', 'unavailable', 'none']
+          else 0 %}
           {% set prio_e = states('input_text.ev_home_battery_priority_entity') | trim %}
           {% set batt_first = prio_e not in ['', 'unknown', 'unavailable', 'none'] and is_state(prio_e, 'on') %}
           {% set batt_charge = 0 if batt_first else [-(batt_power), 0] | max %}
-          {% set batt_discharge = 0 if is_state('sensor.ev_charging_mode', 'assisted_battery') else [batt_power, 0] | max %}
+          {% set batt_discharge = 0 if is_state('sensor.ev_charging_mode', 'assisted_battery')
+          else [batt_power, 0] | max %}
           {% set current_power = grid_export - grid_import %}
           {% set excess = current_power + charger_power + batt_charge - batt_discharge - buffer %}
           {{ excess | round(0) }}
