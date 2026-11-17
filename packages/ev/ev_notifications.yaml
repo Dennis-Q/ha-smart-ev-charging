@@ -202,11 +202,15 @@ automation:
             {%- set ns = namespace(codes=[]) -%}
             {%- for i in [1,2,3,4,5] -%}
               {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.codes = ns.codes + ['Error ' ~ v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.codes = ns.codes + ['Error ' ~ v] -%}
+              {%- endif -%}
             {%- endfor -%}
             {%- for i in [1,2,3,4,5] -%}
               {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.codes = ns.codes + ['Warning ' ~ v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.codes = ns.codes + ['Warning ' ~ v] -%}
+              {%- endif -%}
             {%- endfor -%}
             {{ ns.codes | join(', ') }}
       - action: script.ev_notify_dispatch
