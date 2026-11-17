@@ -14,9 +14,13 @@ views:
               {%- set ns = namespace(w=[], e=[]) -%}
               {%- for i in [1,2,3,4,5] -%}
               {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.w = ns.w + [v] -%}
+              {%- endif -%}
               {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.e = ns.e + [v] -%}
+              {%- endif -%}
               {%- endfor -%}
               <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
               {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
@@ -346,7 +350,9 @@ views:
         title: Window Charging
         content: |-
           {%- macro yn(v) -%}{{ 'yes' if v in [true, 'true', 'on', 'True'] else ('no' if v in [false, 'false', 'off', 'False'] else '–') }}{%- endmacro -%}
-          {%- macro t(e) -%}{%- set v = states(e) -%}{{ as_timestamp(v) | timestamp_custom('%a %H:%M') if as_timestamp(v, none) is not none else '–' }}{%- endmacro -%}
+          {%- macro t(e) -%}
+            {%- set v = states(e) -%}{{ as_timestamp(v) | timestamp_custom('%a %H:%M') if as_timestamp(v, none) is not none else '–' }}
+          {%- endmacro -%}
           | | |
           |---|---|
           | Window | {{ t('sensor.ev_charging_window_start_time') }} → {{ t('sensor.ev_charging_window_end_time') }} (active: {{ yn(states('sensor.ev_charging_window_active')) }}) |

@@ -12,9 +12,13 @@ views:
               {%- set ns = namespace(w=[], e=[]) -%}
               {%- for i in [1,2,3,4,5] -%}
               {%- set v = states('sensor.peblar_ev_charger_active_warning_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.w = ns.w + [v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.w = ns.w + [v] -%}
+              {%- endif -%}
               {%- set v = states('sensor.peblar_ev_charger_active_error_' ~ i) | int(0) -%}
-              {%- if v > 0 -%}{%- set ns.e = ns.e + [v] -%}{%- endif -%}
+              {%- if v > 0 -%}
+                {%- set ns.e = ns.e + [v] -%}
+              {%- endif -%}
               {%- endfor -%}
               <ha-alert alert-type="error"><strong>Charger alert{{ 's' if (ns.w | length + ns.e | length) > 1 }} active</strong><br>
               {% if ns.e %}Errors: <strong>{{ ns.e | join(', ') }}</strong><br>{% endif %}
