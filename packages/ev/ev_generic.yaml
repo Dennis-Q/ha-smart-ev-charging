@@ -299,7 +299,7 @@ template:
             {{ ns.result }}
 
       # 'on' when EV is drawing significant power in a mode that doesn't justify it.
-      # Condition A: mode=none but charger power > 300 W.
+      # Condition A: mode none, or assisted_wait (HBA said wait), but charger power > 300 W.
       # Condition B: mode=solar/assisted_battery but charger power > 300 W AND grid import > 500 W
       #              (control loop isn't regulating — pulling from grid instead of surplus/battery).
       # Manual override suppressed here so neither notification fires when the user has authorised
