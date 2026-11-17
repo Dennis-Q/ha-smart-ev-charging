@@ -123,7 +123,7 @@ Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/mars
 | `ev_home_battery_priority_entity` | `binary_sensor.hba_batteries_before_ev` | HBA *Charge alongside EV* below its *Batteries first* reserve: the batteries get the solar surplus first, the car what is left |
 | `ev_assisted_entity` (filled in by Apply defaults) | `binary_sensor.hba_ev_assist` | While **Follow assisted** is on and HBA is in charge (*Timed EV charge*, or *Planned* with *Plan the car*): `sensor.ev_charging_mode` shows `assisted_force`, `assisted_battery`, `assisted_wait` or `solar` (displayed as `assisted_solar`), whatever your solar, window and cheapest switches say. Force charge always wins. |
 
-In the other direction HBA reads `sensor.ev_car_info` (the active car: SoC, capacity, connected, max price, departure), `binary_sensor.ev_is_charging` and
+In the other direction HBA reads `sensor.ev_car_info` (the active car: SoC, capacity, connected and since when, charge power, phases, compensated, max price, departure), `binary_sensor.ev_is_charging` and
 `binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). `ev_is_charging` is the
 charger's last real status: while the charger cannot be read (an HA restart, the charger or the
 network down) it keeps what it was, so HBA never takes a charging car for not charging. With the
