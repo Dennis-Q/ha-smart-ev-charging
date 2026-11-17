@@ -812,10 +812,16 @@ automation:
         data:
           variables:
             limit: "{{ expected_limit }}"
+      # The car's limit is set to what the charging mode wants; it is not a fault.
+      # The wanted value is named when the car's step changed it (Normal 84 -> 90).
       - action: script.ev_notify_dispatch
         data:
-          title: "EV Charging Limit Corrected"
-          message: "Corrected from {{ current_limit }}% to {{ expected_limit }}%"
+          title: "EV: car charge limit set to {{ expected_limit }}%"
+          message: >-
+            The car's charge limit was {{ current_limit }}%. It is now set to {{ expected_limit }}%,
+            the limit of the current charging mode{{
+            (' (' ~ states('sensor.ev_expected_charging_limit') | int(0) ~ '%, rounded up to the car\'s step)')
+            if states('sensor.ev_expected_charging_limit') | int(0) != expected_limit | int else '' }}.
           tag: ev_limit_corrected
           color: yellow
           priority: high

@@ -52,6 +52,14 @@ All notable changes to this project will be documented here.
   default 20:00). No answer = it charges.
 
 ### Changed (update both projects together)
+- **Car limit rounded up to the car's step:** a car that only takes steps of 10 % (Škoda) now gets 90 %
+  for a wanted 84 %, not 80 %. Rounded to the nearest step the car stopped at 80 % below HBA Planned's
+  Normal, the plan moved the rest to later hours and a "car stopped early" notification followed
+  (prod 2026-11-17). Following HBA, charging still stops at the wanted limit (HBA's own stop); in the
+  EV project's own modes the car may now charge up to the next step.
+- **Limit notification reworded:** "EV: car charge limit set to 90%" with the old and new limit, and the
+  wanted value when the car's step rounded it, instead of "EV Charging Limit Corrected", which read
+  like a fault.
 - Mode `battery_assist` is now `assisted_battery`. **`input_boolean.ev_battery_assist_charging` and
   `input_text.ev_home_battery_assist_active_entity` are gone**, replaced by the switch and field above.
   If you use HBA's Timed EV charge: run Apply defaults or fill in the field, and turn on Follow assisted.

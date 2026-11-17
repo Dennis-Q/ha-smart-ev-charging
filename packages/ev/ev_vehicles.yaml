@@ -6,7 +6,7 @@
 #   sensor.ev_active_car            name; attributes slot, guest, entity fields
 #   sensor.ev_car_soc               battery level %       (keeps the last value 15 min; unavailable without SoC entity)
 #   sensor.ev_car_target_soc        the car's own limit % (state of its charge-limit number)
-#   sensor.ev_car_expected_limit    expected limit rounded/clamped to that number's min/max/step
+#   sensor.ev_car_expected_limit    expected limit rounded up to that number's step, clamped to its min/max
 #   sensor.ev_car_battery_capacity  kWh
 #   sensor.ev_car_max_power         kW, the lower of car and charger (a third of the charger for a 1-phase car)
 #   binary_sensor.ev_car_single_phase / ev_car_reports_connected / ev_car_setup_missing
@@ -220,9 +220,12 @@ script:
         target: { entity_id: input_number.ev_active_car_slot }
         data: { value: "{{ slot | int(1) }}" }
 
-  # Write a limit to the active car's charge-limit number, rounded and clamped
-  # to what that number accepts (the Renault number: 55-100 in steps of 5 — a
-  # value outside that fails, and the limit check would retry it forever).
+  # Write a limit to the active car's charge-limit number, rounded UP to its step
+  # and clamped to what that number accepts (the Renault number: 55-100 in steps
+  # of 5 — a value outside that fails, and the limit check would retry it
+  # forever). Up, not to the nearest step: a Škoda takes steps of 10, and Normal
+  # 84 % rounded to 80 stopped the car below the plan (prod 2026-11-17). Rounded
+  # up the car stops above it, and the plan's own stop (kWh or SoC) ends the hour.
   ev_set_car_charge_limit:
     alias: "EV: Set car charge limit"
     mode: queued
@@ -244,7 +247,7 @@ script:
             {% set mx = state_attr(e, 'max') | float(100) %}
             {% set st = state_attr(e, 'step') | float(1) %}
             {% set st = st if st > 0 else 1 %}
-            {% set v = ((limit | float(mx) - mn) / st) | round(0) * st + mn %}
+            {% set v = ((limit | float(mx) - mn) / st - 0.001) | round(0, 'ceil') * st + mn %}
             {{ ([[v, mn] | max, mx] | min) | round(0) | int }}
 
   # Ask the car to start charging (force start): a switch is turned on, a
@@ -325,7 +328,7 @@ template:
         state: "{{ states(state_attr('sensor.ev_active_car', 'charge_limit_entity')) | float | round(0) | int }}"
 
       # sensor.ev_expected_charging_limit as the car's number can take it
-      # (same rounding/clamping as script.ev_set_car_charge_limit)
+      # (same rounding up / clamping as script.ev_set_car_charge_limit)
       - name: "EV Car Expected Limit"
         unique_id: ev_car_expected_limit
         unit_of_measurement: "%"
@@ -338,7 +341,7 @@ template:
           {% set mx = state_attr(e, 'max') | float(100) %}
           {% set st = state_attr(e, 'step') | float(1) %}
           {% set st = st if st > 0 else 1 %}
-          {% set v = ((states('sensor.ev_expected_charging_limit') | float - mn) / st) | round(0) * st + mn %}
+          {% set v = ((states('sensor.ev_expected_charging_limit') | float - mn) / st - 0.001) | round(0, 'ceil') * st + mn %}
           {{ ([[v, mn] | max, mx] | min) | round(0) | int }}
 
       - name: "EV Car Battery Capacity"
