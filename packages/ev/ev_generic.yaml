@@ -366,10 +366,12 @@ template:
           {% if mode == 'force' %}
             {{ states('input_number.ev_charging_limit_force') | int(100) }}
           {% elif mode == 'assisted_force' %}
-            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | int(states('sensor.ev_car_target_soc') | int(80)) }}
+            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit')
+                | int(states('sensor.ev_car_target_soc') | int(80)) }}
           {% elif mode in ['assisted_battery', 'solar'] %}
             {% set solar_limit = states('input_number.ev_charging_limit_solar') | int(100) %}
-            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | int(solar_limit) if is_state('binary_sensor.ev_following_assisted', 'on') else solar_limit }}
+            {{ state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | int(solar_limit)
+                if is_state('binary_sensor.ev_following_assisted', 'on') else solar_limit }}
           {% elif mode in ['cheapest', 'window'] %}
             {{ states('input_number.ev_charging_limit_window') | int(80) }}
           {% else %}
@@ -378,12 +380,14 @@ template:
         attributes:
           limit_source: >-
             {% set mode = states('sensor.ev_charging_mode') %}
-            {{ mode if mode in ['force', 'assisted_force', 'assisted_battery', 'solar', 'cheapest', 'window'] else 'car' }}
+            {{ mode if mode in ['force', 'assisted_force', 'assisted_battery', 'solar', 'cheapest', 'window']
+            else 'car' }}
 
       - name: "EV Charging Mode"
         unique_id: ev_charging_mode
         state: >
-          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on') or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
+          {% set is_force_charging = is_state('input_boolean.ev_force_charge_once', 'on')
+          or is_state('input_boolean.ev_force_charge_permanent', 'on') %}
           {# ev_window_price_allowed is always on unless the window max price limit is enabled #}
           {# A guest car (no car data) gets no window charging — only force and solar #}
           {% set is_guest = state_attr('sensor.ev_active_car', 'guest') in [true, 'true', 'True'] %}
@@ -392,8 +396,11 @@ template:
           {% set assisted = is_state('binary_sensor.ev_following_assisted', 'on') %}
           {% set assisted_mode = state_attr('binary_sensor.ev_following_assisted', 'ev_mode') %}
           {% set following = assisted and not is_guest %}
-          {% set below_limit = states('sensor.ev_car_soc') | float(0) < state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | float(101) %}
-          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true') and is_state('input_boolean.ev_window_charging', 'on') and is_state('binary_sensor.ev_window_price_allowed', 'on') and not is_guest and not following %}
+          {% set below_limit = states('sensor.ev_car_soc') | float(0)
+          < state_attr('binary_sensor.ev_following_assisted', 'ev_limit') | float(101) %}
+          {% set is_window_active = is_state('sensor.ev_charging_window_active', 'true')
+          and is_state('input_boolean.ev_window_charging', 'on')
+          and is_state('binary_sensor.ev_window_price_allowed', 'on') and not is_guest and not following %}
           {% set is_in_cheapest_window = is_state('sensor.ev_is_in_cheapest_window', 'true') %}
           {% set prefer_tariff_over_solar = is_state('input_boolean.ev_charge_prefer_tariff_over_solar', 'on') %}
           {% set tarif_optimization = is_state('input_boolean.ev_dynamic_tariff_optimization', 'on') %}
@@ -407,7 +414,8 @@ template:
             assisted_force
           {# Prefer tariff over solar: with optimisation the cheapest slots win, without it the
              whole window (with the max price limit: every slot cheap enough) wins #}
-          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization and is_in_cheapest_window %}
+          {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization
+          and is_in_cheapest_window %}
             cheapest
           {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and not tarif_optimization %}
             window
@@ -450,7 +458,8 @@ template:
           # Home charging of this car is compensated per kWh at the max price (per car slot)
           compensated: >-
             {{ state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True']
-               and is_state('input_boolean.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1)) ~ '_compensated', 'on') }}
+               and is_state('input_boolean.ev_car' ~ (state_attr('sensor.ev_active_car', 'slot') | int(1))
+                   ~ '_compensated', 'on') }}
           following: "{{ is_state('input_boolean.ev_follow_assisted', 'on') }}"
           capacity_kwh: "{{ states('sensor.ev_car_battery_capacity') | float(0) }}"
           efficiency: "{{ [states('input_number.ev_charging_efficiency_percent') | float(92) / 100, 0.5] | max }}"
@@ -577,7 +586,8 @@ automation:
           {# limit - 1: the car stops at its limit and may report the last percent minutes
              later or never; without it force charge once could stay on until the next plug-in #}
           {% set limit = states('input_number.ev_charging_limit_force') | int(1) %}
-          {{ (states('sensor.ev_car_soc') | int(0)) >= (limit - 1) and is_state('input_boolean.ev_force_charge_once', 'on') }}
+          {{ (states('sensor.ev_car_soc') | int(0)) >= (limit - 1)
+          and is_state('input_boolean.ev_force_charge_once', 'on') }}
     actions:
       - action: input_boolean.turn_off
         target:
