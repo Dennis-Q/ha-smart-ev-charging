@@ -11,9 +11,62 @@ Needs work for public use, but might be done later.
 ## Requirements
 Probably incomplete but it's a start:
 - Solar integration (for solar charging, entities that show current power-use)
-- P1-meter (preferably with quick updates)
+- P1-meter (preferably with quick updates): `sensor.electricity_meter_power_consumption` and
+  `sensor.electricity_meter_power_production` in W
+- `sensor.p1_meter_power` — net grid power in W (positive = importing). Used by the
+  *unexpected grid charging* check and its notification. The
+  [Home Battery Assistant (HBA)](https://github.com/Dennis-Q/marstek-venus-rs485-hba) defines
+  it (`custom_hba_config.yaml`); without HBA, add a template sensor yourself:
+
+  ```yaml
+  template:
+    - sensor:
+        - name: "P1 Meter Power"
+          unique_id: p1_meter_power
+          unit_of_measurement: "W"
+          device_class: power
+          state: >-
+            {{ states('sensor.electricity_meter_power_consumption') | float(0)
+               - states('sensor.electricity_meter_power_production') | float(0) }}
+  ```
 - Peblar EV charger with **Modbus TCP enabled** (see below)
-- Entso-e integration (and in Dashboard also Frank Energie)
+- Frank Energie integration (default price source) or Entso-e — see `input_text.ev_price_entity`
+- A car integration with at least a battery level (SoC) sensor — see "Car entities" below
+
+## Cars
+
+Up to three cars, set up on the **Cars** view. The logic never reads a car integration
+directly; it reads the active car through `sensor.ev_active_car`, `sensor.ev_car_soc`,
+`sensor.ev_car_target_soc`, `sensor.ev_car_battery_capacity`, `sensor.ev_car_max_power`,
+`binary_sensor.ev_car_single_phase` and `binary_sensor.ev_car_reports_connected`.
+
+Per car (`ev_car1_*`, `ev_car2_*`, `ev_car3_*`):
+
+| Field | Entity | Used for | Empty |
+|---|---|---|---|
+| name | — | car selector, notifications | "Car N" |
+| battery capacity / max charge power | kWh / kW | hours needed (power = lower of car and charger) | 58 kWh / 10.5 kW |
+| charges on 1 phase | on/off | charger stays single-phase in every mode (solar gets the whole surplus) | 3-phase |
+| `soc_entity` | sensor, battery level % | hours needed (window), force once until full, charge-complete notification | car 1: setup banner; car 2/3: **guest** |
+| `charge_limit_entity` | the car's own charge limit %: a number, or a sensor | a number is read, and set to the active mode's limit (rounded/clamped to the number's min/max/step); a sensor is only read, with a warning when it is below the mode's limit | the car keeps its own limit; a notification tells when the car stops below the target |
+| `start_entity` | switch (turned on) or button (pressed) | when force charging starts | skipped |
+| `connected_entity` | binary_sensor, the car reports the cable plugged in | re-checks the limit when the car reports in | skipped (plug-in comes from the charger) |
+
+Car 1 is always on. With only car 1 nothing about choosing a car appears. With car 2 or 3
+switched on, the main view gets a car selector and plugging in sends a **"which car?"**
+notification (mobile app buttons; no answer = the current car stays). A **guest** (car 2/3
+without a SoC sensor) gets no window charging, only force and solar; selecting one — on the
+dashboard or in the notification — turns on a one-time force charge (turning it off and solar
+on is up to the user). When a guest unplugs, the last own car becomes active again. A **phase check** asks — never switches — when only charger phase 1 draws power
+while a 3-phase car is selected.
+
+To choose a car from your own automation or script, call `script.ev_select_car` with
+`slot: 1|2|3`. Setting `input_select.ev_active_car` from an automation is ignored on purpose:
+the selector's options are rewritten automatically, which briefly selects the first car, so
+only changes made by a person (dashboard, voice) are taken from it.
+
+With a **MySkoda** car (`sensor.skoda_<car>_battery_percentage`) car 1 is filled in at start
+while its SoC field is empty, so an existing install keeps working without setup.
 
 ### Enabling Modbus on the Peblar charger
 
@@ -33,6 +86,52 @@ of whole amps). Before installing, configure the charger:
 See `MODBUS-README.md` for the full installation procedure, including the
 required order of steps (remove the official REST integration first, then
 install and configure the Modbus package).
+
+## Dynamic prices and window charging
+
+All price logic reads one sensor, `sensor.ev_energy_prices_data`. It takes the `prices`
+attribute of the sensor named in `input_text.ev_price_entity` (Advanced settings → Price data)
+and turns it into a sorted list of slots (`slots: [{ts, price}]`, `slots_per_hour`).
+
+- **Source:** Frank Energie (`{from, till, price}`) or ENTSO-E (`{time, price}`), hourly or
+  15-minute. Empty = `sensor.frank_energie_prices_current_electricity_price_all_in`. Use the
+  all-in sensor if you want the max price to be an all-in price. The cheapest-hours ranking is
+  the same for all-in and market prices.
+- **Outages:** when the source has no prices, the slots that have not ended yet are kept
+  (`stale: true`). Slots are fixed timestamps and are never reused for another day. After an
+  hour you get a notification.
+- **Cheapest hours** (window charging + `ev_dynamic_tariff_optimization`): picks the cheapest
+  ⌈hours needed × slots per hour⌉ slots between now and the window end. The plan is shown as a
+  chart and summary under **Window Charging** on the main view.
+- **Max price** (`ev_window_max_price_enabled`, `ev_window_charging_max_price`, default 0.32,
+  **off by default**): while on, window and cheapest charging only run in slots at or below the
+  limit. Without tariff optimisation that means "charge whenever it is cheap enough".
+- **Prices not known yet:** next-day prices are published around 13:15 (Frank Energie). Until
+  then, a window that ends the next morning is only partly priced, and the selection only
+  compares the known part. `binary_sensor.ev_window_prices_known` shows this. If prices are
+  still missing after 14:00, `binary_sensor.ev_window_prices_late` turns on and you get a
+  notification.
+
+## Using with a home battery (HBA)
+
+Works on its own; with [Home Battery Assistant](https://github.com/Dennis-Q/marstek-venus-rs485-hba)
+(HBA) the two exchange a few entities. Set these under Advanced settings → Power entities:
+
+| EV helper | HBA entity | Effect |
+|---|---|---|
+| `ev_home_battery_power_entity` | `sensor.hba_total_battery_power` | Solar mode counts battery charging as surplus for the car; battery discharge (e.g. selling) never counts as solar |
+| `ev_home_battery_priority_entity` | `binary_sensor.hba_batteries_before_ev` | HBA *Charge alongside EV* below its *Batteries first* reserve: the batteries get the solar surplus first, the car what is left |
+| `ev_assisted_entity` (filled in by Apply defaults) | `binary_sensor.hba_ev_assist` | While **Follow assisted** is on and HBA is in charge (*Timed EV charge*, or *Planned* with *Plan the car*): `sensor.ev_charging_mode` shows `assisted_force`, `assisted_battery`, `assisted_wait` or `solar` (displayed as `assisted_solar`), whatever your solar, window and cheapest switches say. Force charge always wins. |
+
+In the other direction HBA reads `sensor.ev_car_info` (the active car: SoC, capacity, connected and since when, charge power, phases, compensated, max price, departure), `binary_sensor.ev_is_charging` and
+`binary_sensor.ev_charger_saturated` (both set in HBA's EV Charge view). `ev_is_charging` is the
+charger's last real status: while the charger cannot be read (an HA restart, the charger or the
+network down) it keeps what it was, so HBA never takes a charging car for not charging. With the
+Peblar Modbus file, `binary_sensor.peblar_ev_charger_unreachable` (banner + notification) says when
+the charger has not answered for 90 s. For HBA's per-phase
+limits you can define `sensor.ev_charger_power` (or `_l1`..`_l3`) in HBA's `hba_config.yaml` from
+`sensor.peblar_ev_charger_power` / the Peblar per-phase Modbus sensors. The Peblar's own load
+balancing keeps protecting the grid connection; HBA's main fuse limit only limits the batteries.
 
 ## Installation
 

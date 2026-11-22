@@ -60,7 +60,39 @@ if [ -z "$VERSION" ]; then
     fi
 fi
 
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+# Resolve a branch to its latest commit: sets COMMIT_SHA, COMMIT_DATE, COMMIT_MSG.
+# Plain curl/grep/sed (no jq or python on a stock HA SSH add-on). Returns non-zero
+# when the GitHub API is unreachable or rate-limited. grep reads a here-string, not a
+# pipe: with pipefail, grep -m1 stopping early on a large response (a merge commit
+# with a big diff, 100+ KB) gave printf SIGPIPE and failed the whole lookup.
+resolve_commit() {
+    local json
+    json=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+           "https://api.github.com/repos/${REPO}/commits/$1" 2>/dev/null) || return 1
+    COMMIT_SHA=$(grep -m1 -o '"sha": *"[0-9a-f]\{40\}"' <<<"$json" \
+                 | grep -o '[0-9a-f]\{40\}') || return 1
+    COMMIT_DATE=$(grep -m1 -o '"date": *"[^"]*"' <<<"$json" | cut -d'"' -f4 | cut -c1-10)
+    COMMIT_MSG=$(grep -m1 -o '"message": *"\([^"\\]\|\\.\)*"' <<<"$json" \
+                 | sed -e 's/^"message": *"//' -e 's/"$//' -e 's/\\n.*//' -e 's/\\"/"/g')
+    [ -n "$COMMIT_SHA" ]
+}
+
+# A release tag (v...) identifies a build by itself. Anything else (dev, main, a
+# commit hash) is resolved to the commit it points at and every file is downloaded
+# from that exact commit: by branch name, raw.githubusercontent.com caches each file
+# for a few minutes and one run could mix two commits.
+COMMIT_LINE=""
+if [[ "$VERSION" =~ ^v[0-9] ]]; then
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+    DISPLAY_REF="git ref: ${VERSION}"
+elif resolve_commit "$VERSION"; then
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${COMMIT_SHA}"
+    DISPLAY_REF="branch : ${VERSION} @ ${COMMIT_SHA:0:7} (${COMMIT_DATE})"
+    COMMIT_LINE="Commit  : ${COMMIT_MSG}"
+else
+    BASE_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}"
+    DISPLAY_REF="branch : ${VERSION} (latest commit unknown — offline, API rate limit or unknown branch)"
+fi
 
 # ── Download helper ───────────────────────────────────────────────────────────
 
@@ -78,7 +110,8 @@ RELEASE_VERSION=$(curl -fsSL "${BASE_URL}/VERSION" 2>/dev/null | tr -d '[:space:
 echo ""
 hr
 echo "  ha-smart-ev-charging — installer"
-echo "  Release : ${RELEASE_VERSION}  (git ref: ${VERSION})"
+echo "  Release : ${RELEASE_VERSION}  (${DISPLAY_REF})"
+[ -n "$COMMIT_LINE" ] && echo "  ${COMMIT_LINE}"
 echo "  Target  : ${CONFIG_DIR}"
 hr
 echo ""
@@ -196,6 +229,7 @@ CORE_FILES=(
     packages/ev/ev_generic.yaml
     packages/ev/ev_notifications.yaml
     packages/ev/ev_solar.yaml
+    packages/ev/ev_vehicles.yaml
     packages/ev/ev_window.yaml
 )
 
@@ -207,6 +241,9 @@ done
 # Dashboard is at repo root but lands under lovelace/ in /config
 download "dashboard.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard.yaml"
 ok "lovelace/ev_dashboard.yaml"
+# Preview dashboard (optional — only shown once registered in configuration.yaml)
+download "dashboard_preview.yaml" "${CONFIG_DIR}/lovelace/ev_dashboard_preview.yaml"
+ok "lovelace/ev_dashboard_preview.yaml  (preview dashboard, optional)"
 
 # Record installed version (hidden file — not loaded by HA)
 echo "$RELEASE_VERSION" > "${CONFIG_DIR}/packages/ev/.ev_charging_version"
@@ -260,6 +297,38 @@ else
 fi
 
 echo ""
+
+# ── Other Peblar Modbus files, and double file names ─────────────────────────
+# Only looks and warns; changes nothing.
+#   - A Peblar Modbus file that is not this project's (an own copy, an old template,
+#     another name or folder): it is never updated by this installer, and next to
+#     packages/ev/ev_peblar_modbus.yaml both define the same hub and entities.
+#   - Two ev_*.yaml files with the same name under packages/: Home Assistant loads only
+#     one of them, and which one is not obvious (an old copy in a subfolder wins).
+
+EV_WARN=false
+while IFS= read -r _f; do
+    [ "$_f" = "$MODBUS_TARGET" ] && continue
+    grep -q "^modbus:" "$_f" 2>/dev/null || continue
+    grep -qi "peblar" "$_f" 2>/dev/null || continue
+    EV_WARN=true
+    warn "${_f#"${CONFIG_DIR}/"} is a Peblar Modbus file that is not this project's."
+    if [ -f "$MODBUS_TARGET" ]; then
+        say "It defines the charger a second time next to packages/ev/ev_peblar_modbus.yaml:"
+        say "remove it, or rename it so it no longer ends in .yaml."
+    else
+        say "This installer does not update it, and newer features (charger unreachable,"
+        say "per-phase power) need this project's packages/ev/ev_peblar_modbus.yaml."
+    fi
+done < <(find "${CONFIG_DIR}/packages" -type f -name '*.yaml' 2>/dev/null | sort)
+
+for _b in $(find "${CONFIG_DIR}/packages" -type f -name 'ev_*.yaml' 2>/dev/null | sed 's|.*/||' | sort | uniq -d); do
+    EV_WARN=true
+    warn "More than one file named ${_b} under packages/ — Home Assistant loads only one of them:"
+    find "${CONFIG_DIR}/packages" -type f -name "$_b" | sed "s|^${CONFIG_DIR}/|      |"
+    say "Remove the old copy, or rename it so it no longer ends in .yaml."
+done
+[ "$EV_WARN" = true ] && echo ""
 
 # ── configuration.yaml checks ─────────────────────────────────────────────────
 

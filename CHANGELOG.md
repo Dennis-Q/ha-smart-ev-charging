@@ -2,6 +2,320 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.19] – 2026-11-22
+
+### Added
+- **Compensated charging per car:** `input_boolean.ev_car1_compensated` (2, 3): home charging of that car
+  is compensated per kWh at the max price (e.g. by an employer). Car 1 is on after Apply defaults.
+  `sensor.ev_car_info` gets `compensated` (the active car; a guest never) and `connected_since` (when
+  the cable went in). HBA's Planned uses both for charging the car from the home batteries.
+- **Car info: `phases`** (1 or 3, the active car's *single phase* setting) on `sensor.ev_car_info`. HBA's
+  Planned uses it for the car's minimum charge power (6 A per phase).
+- **Car SoC rides out short gaps:** `sensor.ev_car_soc` keeps the last real value for up to 15 minutes
+  while the car integration has none (attributes `held`, `lost` = since when), also across a restart; a recorder row only when the SoC changes. The official Škoda
+  integration was unavailable ~10 minutes every hour (API rate limit) and ~2 minutes after a restart:
+  the car read 0 % and HBA Planned dropped it from the plan each time.
+- **Installer warns about stray files:** a Peblar Modbus file that is not this project's (it is never
+  updated and defines the charger a second time), and two `ev_*.yaml` files with the same name under
+  `packages/` (Home Assistant loads only one).
+- **Charger unreachable (Peblar Modbus file):** `binary_sensor.peblar_ev_charger_unreachable` turns on
+  when the charger has not answered over Modbus for 90 s (longer than an HA restart). The EV project
+  shows a banner and sends a notification for it.
+- **The charging status keeps its last real value:** `binary_sensor.ev_is_charging` now keeps the charger's last real status while the charger cannot
+  be read, also over an HA restart; it used to read "off" then, also while the car was charging.
+- **Ready for a read-only car integration** (the official Škoda integration in HA 2026.11 has no
+  settable charge limit and no start command; MySkoda keeps working as before):
+  - Car 1 is filled in from the official Škoda integration too (battery sensor, and the cable sensor
+    where it has one), while its SoC field is empty. MySkoda wins when both are installed.
+  - The car's charge-limit field also takes a **sensor**: read only, never set. New
+    `binary_sensor.ev_car_limit_below_plan` + notification when the car's own limit is below what
+    the active mode charges to (also when setting a number did not work, after 5 minutes).
+  - New `binary_sensor.ev_car_stopped_early` + notification: the charger offers power in force /
+    cheapest / window / assisted force, the car takes under 300 W for 10 minutes and is still
+    below the target. For a car whose limit cannot be read: its own limit is probably lower.
+- **Max price check, once a month:** on the 1st at the reminder time a notification says which max
+  price is in force and whether its switch is on (`automation.ev_max_price_check_notification`).
+- `sensor.ev_car_info` also gives `car_name`, the active car, for the HBA dashboard.
+- **An assistant can decide for the car (HBA: Planned, Timed EV charge).** New switch
+  `input_boolean.ev_follow_assisted` (off by default), field `input_text.ev_assisted_entity` (filled in
+  by Apply defaults when HBA is installed) and status `binary_sensor.ev_following_assisted`. While
+  following, that entity's attribute `ev_mode` (force, battery, solar, wait) gives mode `assisted_force`,
+  `assisted_battery` or `assisted_wait`; window and cheapest wait. With `solar` available solar runs as
+  normal solar mode whatever its switch says (`sensor.ev_charging_mode_display` shows `assisted_solar`);
+  with `wait` the car takes no solar either, so the home battery gets it (a running solar session stops).
+  Update both projects together: in earlier dev builds `wait` meant what `solar` means now.
+  Force always wins. `ev_limit` sets the car's limit, and `assisted_force` stops at the charger when
+  the SoC gets there, so a car without a charge-limit entity works too. `sensor.ev_car_info` tells
+  the assistant about the active car, including the max price and whether its switch is on.
+- **Warning above the max price.** When the assistant plans grid charging above the max price you get
+  Charge / Skip after plug-in or a new plan and again in the evening (`input_datetime.ev_assisted_reminder`,
+  default 20:00). No answer = it charges.
+
+### Changed (update both projects together)
+- **Car limit rounded up to the car's step:** a car that only takes steps of 10 % (Škoda) now gets 90 %
+  for a wanted 84 %, not 80 %. Rounded to the nearest step the car stopped at 80 % below HBA Planned's
+  Normal, the plan moved the rest to later hours and a "car stopped early" notification followed
+  (prod 2026-11-17). Following HBA, charging still stops at the wanted limit (HBA's own stop); in the
+  EV project's own modes the car may now charge up to the next step.
+- **Limit notification reworded:** "EV: car charge limit set to 90%" with the old and new limit, and the
+  wanted value when the car's step rounded it, instead of "EV Charging Limit Corrected", which read
+  like a fault.
+- Mode `battery_assist` is now `assisted_battery`. **`input_boolean.ev_battery_assist_charging` and
+  `input_text.ev_home_battery_assist_active_entity` are gone**, replaced by the switch and field above.
+  If you use HBA's Timed EV charge: run Apply defaults or fill in the field, and turn on Follow assisted.
+- **Up to three cars** instead of the hard-wired Skoda Elroq (with Mik3yZ). New package
+  `packages/ev/ev_vehicles.yaml` and a **Cars** view. Per car: name, battery capacity, max charge
+  power, *charges on 1 phase*, and the entities of its integration — SoC sensor, charge-limit
+  number, start charging (switch or button), connected sensor; an empty field skips what needs
+  it. The logic reads the active car through `sensor.ev_active_car`, `sensor.ev_car_soc`,
+  `sensor.ev_car_target_soc`, `sensor.ev_car_expected_limit`, `sensor.ev_car_battery_capacity`,
+  `sensor.ev_car_max_power`, `binary_sensor.ev_car_single_phase`,
+  `binary_sensor.ev_car_reports_connected`.
+  - Car 1 is always on; with only car 1 nothing about choosing a car appears. With more cars:
+    car selector on the main view, **"which car?"** notification at plug-in (no answer = the
+    current car stays), and a **phase check** that asks (never switches) when only L1 draws
+    while a 3-phase car is selected.
+  - **Guest**: car 2/3 without a SoC sensor — no car control, the charger is steered alone.
+    No window charging (no SoC, so no hours needed), only force and solar. Selecting a guest
+    (dashboard or notification) turns on a one-time force charge; turning it off and solar on
+    is up to the user. When a guest unplugs the last own car becomes active again. The Cars view
+    hides battery capacity and max power for a guest (only used with a SoC sensor).
+  - **1-phase cars** (e.g. Dacia Spring, Mik3yZ 7f84856): the charger stays forced single-phase
+    in solar, force and window, so solar gets the whole surplus instead of a third of it.
+  - **Car limit writes are rounded and clamped** to the number's min/max/step (Renault: 55–100
+    in steps of 5); the limit check compares with that value, so it never retries an
+    unreachable limit.
+  - **MySkoda prefill**: while car 1's SoC field is empty, the MySkoda entities are filled in at
+    start (waits up to 5 minutes for the integration), so an existing install behaves as before.
+  - `binary_sensor.ev_car_setup_missing` + dashboard banner when car 1 has no SoC entity or a
+    configured one does not exist.
+  - Removed: `input_number.ev_battery_capacity_kwh` (now per car; 60 kWh / 11 kW by default).
+  - `script.ev_notify_dispatch` takes optional mobile-app `actions`.
+- **Defaults closer to what was measured** (Elroq 60 on an 11 kW charger, 2026-11-12/13: 10.4 kWh per
+  full hour, 0.60 kWh per percent): charging efficiency 90 → 92 %, a new car slot 60 → 58 kWh and
+  11 → 10.5 kW. Only for new installs, empty car slots and Apply defaults (efficiency); existing
+  values stay as they are.
+
+### Fixed
+
+- **Force charge (once) switched off right away:** when the car is already at the force charge limit, or
+  within 1 % of it, force charge switches off the moment it is switched on. The notification said "Car
+  fully charged"; it now says it was switched off at once, with the car's SoC and the limit, and that the
+  limit must be raised to charge more. The normal "complete" message also shows both values.
+- **Manual override switched off: this project decides again, also about stopping.** A charge started
+  by hand kept running after the override was switched off: in solar mode with too little sun (no
+  branch stopped it), and in every other mode (the mode automation did not look at the override).
+  Now, 30 s after switching it off, the charger is stopped when the mode would not charge, and a
+  force / cheapest / window mode that became active during the override starts. Plugging in with
+  the charger still on and too little sun stops it the same way.
+- **Stepping down from 3-phase to 1-phase:** the phase switch is written before the higher 1-phase
+  current, which stood on all three phases for a moment (up to ~10 kW).
+- The charging plan follows a change of the max price or its switch at once (was at the next quarter).
+- Hours needed is rounded to 2 decimals (2.02 h became 2.0 h and the plan was one slot short).
+- `sensor.peblar_ev_charger_uptime` is unavailable without the raw counter (it showed "now").
+- The notify action suggestions only list the mobile app's own phones (every notify entity, e.g.
+  Telegram, was shown as a `notify.mobile_app_…` action that does not exist).
+- "Charging complete" no longer fires when another car is selected during charging; a guest that
+  is still selected after a restart does not switch one-time force charge on again.
+- The notifications switch is checked in one place, `script.ev_notify_dispatch`; the seven
+  automations that also checked it themselves no longer do. No change in what is sent.
+- Dashboards: "Assisted charging above max price" is in the notification automations list; *Up since*
+  label in the classic dashboard; *Cheapest slots in window* in the preview's debug table.
+- **Fewer car charge-limit writes.** Each write is a cloud command to the car. The limit check now
+  waits until the mode has been settled for 30 s (as the charger does), leaves the car's limit alone in a mode without
+  a limit of its own (assisted wait, none), and doesn't write while the car limit is still unknown
+  after a restart. Before, the car's own report raced the expected limit and wrote the old value
+  back: 7 writes in one hour on 2026-11-05 (80/100 ping-pong after 15–22 s assisted force blips,
+  and 80 right after a restart), where 1 was needed.
+- **Own code review (2026-10-28), after Mik3yZ's round:**
+  - **Solar starts when the surplus is already there.** Plugging in on a steady sunny afternoon,
+    turning solar on, or turning manual override off never started the charger: the start only
+    reacted to a *change* of phase mode. Now also on plug-in (30 s), manual override off and
+    solar mode entry, when the charger is off and the phase mode asks for 1- or 3-phase.
+  - **No SoC = no plan, instead of planning from 0 %.** `sensor.ev_hours_needed_for_charging`
+    is unavailable without a SoC; the cheapest selection keeps its plan meanwhile. At every HA
+    restart hours needed jumped to 53.6 h and the mode went to `cheapest` for a moment (prod
+    2026-10-26); a longer car-API outage would have charged at 16 A in expensive hours.
+  - **P1 meter unavailable stops solar charging** instead of holding (buffer 0) or ramping to
+    16 A from the grid (negative buffer): `sensor.ev_grid_excess_power` is unavailable without
+    both P1 readings, so phase mode goes to `stop`.
+  - **No long import in 3-phase below the 6 A minimum** (between the two thresholds, up to
+    ~640 W at the defaults): down to 1-phase after 10 minutes there
+    (`binary_sensor.ev_three_phase_below_minimum`, read by `sensor.ev_optimal_charging_phase_mode`).
+  - **Charger alert after 1 minute**, and "cleared" only after an alert was sent (prod
+    2026-10-27: a 10-second warning sent both). New automation `ev_notify_charger_alert_cleared`.
+  - **Unexpected-charging notification** also when the charger keeps drawing after the switch
+    went off (the numeric_state trigger only fired on crossing 0 W).
+  - **`binary_sensor.ev_is_connected` is unavailable, not off, while the charger state is
+    unknown** — every HA restart looked like unplug + plug-in ("which car?", plug-in triggers).
+  - Solar control loop: `max_exceeded: silent` (no "Already running" flood with an unreachable
+    charger); P1 unit check no longer on while P1 is unavailable, comment corrected (no kW
+    scaling); charger max power documented as planning-only.
+- **No more 16 A bursts at solar starts and phase switches.** `switch.peblar_ev_charger_charge`
+  wrote `charge_limit_desired` (16 A after any window/force session) on every `turn_on`, also
+  when already on — replacing the setpoint the solar loop had just written until the next 3-s
+  cycle (prod 2026-10-25 09:31: 3.4 kW on one phase; at a 1P→3P step-up up to 11 kW). Now:
+  - `turn_on` does nothing while the switch is on (unless a stop is in progress);
+  - every solar / battery-assist start sets `charge_limit_desired` to its own start value
+    first, because the mA write is refused while the switch is off;
+  - force start sets the A limit to 16 (which sets `charge_limit_desired`) instead of an mA
+    value the charger refuses while off (Mik3yZ 7f84856).
+- **1-phase car: correct hours needed.** `sensor.ev_car_max_power` caps a 1-phase car at a
+  third of the charger (3.7 kW on an 11 kW charger); it used the full 11 kW, so window/cheapest
+  planned about 3× too few hours.
+- **The running cheapest slot is kept.** As the SoC rises and hours needed shrinks, re-sorting
+  by price could drop the slot that was charging for a cheaper later one — charging stopped
+  mid-slot and the rest was bought later (prod 2026-10-13). Now only future slots are dropped.
+- **Max price in the plan:** with the max price limit on, slots above it are no longer selected
+  (or shown green on the chart) and do not count for *sufficient known hours* — they never
+  charged anyway.
+- **Price charts start at 0** (soft minimum; lower only with negative prices). They started at
+  the lowest price, so e.g. €0.28 looked like nothing next to €0.73.
+- **EV notifications switch now covers every EV notification.** `script.ev_notify_dispatch`
+  checks `input_boolean.ev_notifications_enabled` itself; 12 automations (force charge, limit
+  corrected, charging complete, price data, unit mismatch, …) used to ignore it. New field
+  `critical: true` sends anyway — only the *charger failed to stop* notification uses it.
+- **A wrong notify action no longer aborts the automation that notifies.** The notify call runs
+  in `script.ev_notify_send`, started without waiting; a typo or removed phone fails only that
+  run (visible in its trace). `continue_on_error` does not cover an action that does not exist.
+  The dispatch also applies its field defaults itself (HA only uses them as UI hints) and runs
+  in parallel, so simultaneous notifications are no longer dropped.
+- **Notify target check:** an empty helper is fine again (notifications go to persistent
+  notifications, as documented) and any `notify.*` action is accepted (`notify.notify`,
+  `notify.telegram`, …). Still flagged: not `notify.<name>`, or the id of a notify *entity*
+  instead of an action.
+- **"EV Charging Complete" only when the SoC rises to the limit** while charging (or within
+  15 minutes after). It also fired when the limit dropped below the SoC — e.g. 75 % after solar
+  and a 60 % window limit — without any charging.
+- **Main view no longer shows Skoda entities**: the Skoda range is gone from *EV Charging
+  Status* (it stays on the Elroq view), and *Car Charging On/Off* is now a *Car — start
+  charging* button for the active car (`script.ev_car_start_charging`, switch or button).
+- `number.peblar_ev_charger_charge_limit`: `reg / 1000 | round` rounded the 1000, not the result,
+  so the decimals were accidental. Now deliberately 2 decimals (e.g. 6.35 A) so the solar
+  regulation stays visible; setting it still takes whole amps. Comment now names the register it
+  really reads (40000).
+- `dashboard.yaml`: header toggles off on *EV Charging Settings* and *Charge Control* — one tap
+  switched every boolean on the card (manual override, permanent force, all modes) at once.
+- Notification automations list (Advanced settings) now also shows the manual-override
+  reminder, *which car?* and the phase check.
+- `.gitattributes` keeps `install.sh` LF on Windows checkouts.
+- README: `sensor.p1_meter_power` is required (defined by HBA, template for installs without
+  it); `script.ev_select_car` is the way for automations to choose a car.
+- **`sensor.ev_expected_charging_limit` is never empty** (from Mik3yZ, 6789b4c): it follows
+  `sensor.ev_charging_mode`; with no active mode it is the car's own limit, so — as before —
+  nothing is corrected then. Ends the recurring "invalid sensor state" error. New attribute
+  `limit_source` (the mode, or `car`).
+- **Plug-in while no mode applies disarms the charger** (Mik3yZ, from 7f84856): the
+  `connected` trigger of `ev_generic_charging_mode_control` now also turns the charge switch
+  off when `sensor.ev_charging_mode` is `none`, in case it was left on.
+- **Dashboard banners are always on top** (both dashboards): all banners sit in one vertical
+  stack as the first card. Hidden banner cards still took a masonry slot, so a visible banner
+  could land in the middle column on desktop instead of at the top.
+- `ev_validate_charging_limit` only compares when both limits are numbers (it used to raise a
+  template error on an empty expected limit).
+
+## [0.2.18] – 2026-11-22 (released together with 0.2.19)
+
+### Added
+- **Charging plan on the dashboard** (Solar Charging view, next to Window Charging): an
+  apexcharts column chart of the next 36 h of prices from `sensor.ev_energy_prices_data` with
+  the selected slots in green, plus a summary — selected slots with price, hours needed, and
+  until when prices are known.
+- **`binary_sensor.ev_window_prices_known`** — on when the price data reaches the end of the
+  charging window; attributes `known_until`, `window_end`, `missing_hours`. Informational: it
+  does not change charging yet. Motivation (prod 2026-10-23): with the window at 08:00–07:00
+  the selection ran on today's prices only — ENTSO-E published tomorrow's at 22:24 — so it
+  charged at €0.12–0.16 midday and evening while the night was €0.02.
+- **`binary_sensor.ev_window_prices_late`** (device_class problem) — on when it is after 14:00
+  and the window is still not fully priced. Frank Energie publishes the next day at 13:15
+  (prod, every day 2026-10-21..23), so before 14:00 an incomplete window is normal for a window
+  that ends the next morning; the dashboard only says "expected around 13:15" then.
+- **`ev_window_prices_late_notification`** — push + persistent notification when that sensor
+  has been on for 5 minutes while window charging with tariff optimisation is on; the
+  persistent notification clears once the window is fully priced.
+- **Home battery priority — `input_text.ev_home_battery_priority_entity`.** Optional
+  binary_sensor from the home battery system that is on while the battery should get the solar
+  surplus first. While on, `ev_grid_excess_power` no longer adds the battery's charging power
+  back, so the EV only gets what the battery leaves over. Empty (the default) keeps the old
+  behaviour. HBA: `binary_sensor.hba_batteries_before_ev` (Charge alongside EV, below the
+  *Batteries first* kWh reserve) — without it EV solar mode took the surplus HBA was holding
+  for the batteries.
+
+### Changed
+- **Installer shows the commit** for a branch install (`EV_VERSION=dev` / `main`): branch, short
+  hash, date and commit message, like the HBA installer. Every file is then downloaded from that
+  exact commit — by branch name, raw.githubusercontent.com caches files for a few minutes, so one
+  run could mix two commits. Release tags are shown as before.
+
+### Fixed
+- **Entity fields that were never filled in no longer show `unknown`** — automation
+  `ev_clear_unknown_entity_fields` sets them to empty at start (the logic already treated both the
+  same; the dashboard looked broken, e.g. *Price entity* `unknown` while prices were loaded).
+
+### Added (preview)
+- **Preview dashboard** `dashboard_preview.yaml` → `lovelace/ev_dashboard_preview.yaml` (installer).
+  Dashboard improvements from the 2026-10-25 review land there first; shown once registered under
+  `lovelace: dashboards:` (e.g. `ev-preview`, `filename: lovelace/ev_dashboard_preview.yaml`).
+  Done there so far: no header toggles on the settings / charge-control cards (one tap switched force
+  charge, override, charger and car together), Window Charging as a readable table (yes/no, "Mon
+  03:00" instead of true/false and raw timestamps), clear price names (Frank all-in / market,
+  ENTSO-E), price source as text, English Frank chart title, Peblar: "Up since", WLAN hidden when
+  not used, error/warning rows only when active.
+
+## [0.2.17] – 2026-10-14
+
+### Added
+- **Configurable price source — `input_text.ev_price_entity`.** Any sensor with a `prices`
+  attribute: Frank Energie (`{from, till, price}`) or ENTSO-E (`{time, price}`), hourly or
+  15-minute slots. Empty (the default, so existing installs need no action) means
+  `sensor.frank_energie_prices_current_electricity_price_all_in`. **Behaviour change:** the
+  cheapest-hours selection used to read ENTSO-E `sensor.average_electricity_price`; it now uses
+  Frank Energie unless you set the ENTSO-E sensor here. Ranking is the same for all-in and
+  market prices (the difference is close to a fixed markup), so the choice mostly affects the
+  max price below and what the dashboard shows.
+- **`sensor.ev_energy_prices_data`** — the only place that reads the provider sensor. Its
+  `slots` attribute (`[{ts, price}]`, sorted, one entry per timestamp) plus `slots_per_hour`
+  are what every window sensor now reads. Same shape as the home battery project's
+  `sensor.hba_energy_prices_data`, so the parsing can later become a shared adapter without
+  touching consumers. Duplicate timestamps are dropped: Frank Energie appends a second copy of
+  today when its tomorrow-fetch fails, which would make the same hour count twice.
+- **Price data survives a provider dropout.** When the price sensor has no prices (unavailable,
+  not loaded yet after a restart), `sensor.ev_energy_prices_data` keeps the previous slots that
+  have not ended yet and sets `stale: true`. Fixes the stop seen on prod 2026-10-13 23:13:
+  ENTSO-E went `unavailable` mid-charge, the cheapest list emptied and the mode dropped to
+  `none`. Slots are absolute timestamps and only not-yet-ended ones are kept, so old prices are
+  never applied to a later day: once the last known slot ends (at most ~35 h), there is no price
+  data and cheapest-hours charging stops, as before.
+- **`ev_price_data_stale_notification`** — push + persistent notification when the price source
+  has given no prices for an hour while tariff optimisation or the max price limit is on; says
+  until when prices are still known. Persistent notification clears when prices return.
+- **Prefer tariff over solar also works without tariff optimisation** (from Mik3yZ's branch).
+  With optimisation off, an active window — every slot at or below the max price, when that
+  limit is on — now wins over solar (mode `window`). With optimisation on, nothing changes,
+  except that the branch no longer reports `cheapest` while optimisation is off.
+- **Window max price** — `input_boolean.ev_window_max_price_enabled` +
+  `input_number.ev_window_charging_max_price` (EUR/kWh; `apply_defaults`: 0.32, limit off — opt in, so an expensive night still charges by default) and
+  `binary_sensor.ev_window_price_allowed`. While enabled, `window` and `cheapest` only charge
+  when the current slot is at or below the limit; it fails closed (no current price ⇒ no
+  window charging). Solar, battery assist and force are not affected. The limit is in the
+  terms of the configured price sensor — pick the all-in sensor for an all-in limit.
+
+### Changed
+- **Cheapest-hours selection works per slot** instead of per hour, so 15-minute prices
+  select the right amount of time (⌈hours needed × slots per hour⌉) and
+  `ev_is_in_cheapest_window` matches the current slot instead of the current hour prefix.
+- **`sensor.ev_cheapest_hours_in_window` state is now the number of selected slots;** the list
+  moved to the `slots` attribute (`[{ts, time, price}]`). As a JSON state it hit HA's
+  255-character limit on longer charges and went `unknown`.
+- **`sensor.ev_charging_debug_info`** — short one-line state; the multi-line summary moved to
+  the `details` attribute (same 255-character limit; it adds price source and max-price
+  lines).
+
+### Thanks
+- Mik3yZ — the max price limit, the Frank Energie switch and the debug-info fix come from their
+  `window-charging-max-price` branch, reworked onto the shared price data sensor; the
+  prefer-tariff change is theirs as well.
+
 ## [0.2.16] – 2026-07-27
 
 ### Fixed

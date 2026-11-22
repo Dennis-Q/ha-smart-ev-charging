@@ -518,6 +518,8 @@ template:
         unique_id: peblar_ev_charger_uptime
         device_class: timestamp
         icon: mdi:timer-outline
+        # Without the raw counter the result was "now", as if the charger had just booted
+        availability: "{{ states('sensor.peblar_ev_charger_uptime_raw') | is_number }}"
         state: >
           {{ (utcnow() - timedelta(seconds=states('sensor.peblar_ev_charger_uptime_raw') | int(0))).isoformat() }}
 
@@ -577,6 +579,16 @@ template:
   # signals. Aggregates the five raw uint16 registers each: ON when any is > 0.
   # ──────────────────────────────────────────────────────────────────────────────
   - binary_sensor:
+      # The charger does not answer over Modbus: its state register has not been readable
+      # for 90 s. Longer than an HA restart takes (~40 s), so a restart does not turn it on.
+      # While on, every Peblar sensor here is out of date and writes do not arrive.
+      - name: "Peblar EV Charger Unreachable"
+        unique_id: peblar_ev_charger_unreachable
+        device_class: problem
+        icon: mdi:lan-disconnect
+        delay_on: "00:01:30"
+        state: "{{ states('sensor.peblar_ev_charger_cp_state_raw') in ['unknown', 'unavailable'] }}"
+
       - name: "Peblar EV Charger Active Errors"
         unique_id: peblar_ev_charger_active_errors
         device_class: problem
@@ -685,13 +697,26 @@ template:
         # collision deterministically in favour of the later command: the
         # pending stop is abandoned (its mA-write suppression lifts) and the
         # limit write below proceeds.
+        #
+        # Already on (and no stop in progress): nothing to do. HA runs turn_on
+        # even when the switch is on, and the write below would replace the mA
+        # setpoint the solar loop just wrote with charge_limit_desired (16 A
+        # after a window/force session) until the next 3-s loop — seen on prod
+        # 2026-10-25 09:31 (3.4 kW on 1 phase for ~2 s) and at every 1P→3P
+        # step-up (code review 2026-10-27). A pending stop still counts as
+        # 'off': the switch reads 'on' for a poll or two after the 0-write.
         turn_on:
+          - condition: template
+            value_template: >-
+              {{ not is_state('switch.peblar_ev_charger_charge', 'on')
+                 or is_state('script.peblar_ev_charger_stop', 'on') }}
           - service: script.turn_off
             target:
               entity_id: script.peblar_ev_charger_stop
           - variables:
               limit: >-
-                {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000, 6000] | max }}
+                {{ [states('input_number.peblar_ev_charger_charge_limit_desired') | float(6) | int * 1000,
+                    6000] | max }}
           - service: modbus.write_register
             data:
               hub: peblar
@@ -769,9 +794,11 @@ template:
       # Drop-in equivalent of the official integration's
       # number.peblar_ev_charger_charge_limit — 6-16 A integer slider.
       #
-      # Reads back the EFFECTIVE limit from
-      # sensor.peblar_ev_charger_charge_current_limit_actual (register 30113 —
-      # lowest of all limiting sources) so the slider reflects what the car sees.
+      # Reads back the setpoint from
+      # sensor.peblar_ev_charger_charge_current_limit_raw (register 40000), in
+      # amps with 2 decimals so the solar/battery-assist regulation stays visible
+      # (setting it still takes whole amps). The effective limit (register 30113, lowest of all limiting
+      # sources) is sensor.peblar_ev_charger_charge_current_limit_actual.
       #
       # When charging is off (register 40000 = 0), reads from
       # input_number.peblar_ev_charger_charge_limit_desired so the configured
@@ -785,7 +812,8 @@ template:
         state: >
           {% set reg = states('sensor.peblar_ev_charger_charge_current_limit_raw') | int(0) %}
           {% if reg > 0 %}
-            {{ [[reg / 1000 | round(0) | int, 6] | max, 16] | min }}
+            {# Brackets: a filter binds tighter than '/' — `reg / 1000 | round` rounded the 1000 #}
+            {{ [[(reg / 1000) | round(2), 6] | max, 16] | min }}
           {% else %}
             {{ [[states('input_number.peblar_ev_charger_charge_limit_desired') | float(6), 6] | max, 16] | min }}
           {% endif %}
@@ -935,12 +963,13 @@ script:
             entity_id: switch.peblar_ev_charger_charge
             state: "on"
         then:
-          # Deliberately NOT gated on input_boolean.ev_notifications_enabled:
-          # a charger that refuses to stop is exactly the event that toggle
-          # must never silence. script.ev_notify_dispatch lives in
-          # ev_generic.yaml — the packages ship together via install.sh.
+          # critical: sent even with EV notifications switched off — a charger
+          # that refuses to stop is exactly the event that toggle must never
+          # silence. script.ev_notify_dispatch lives in ev_notifications.yaml
+          # — the packages ship together via install.sh.
           - service: script.ev_notify_dispatch
             data:
+              critical: true
               title: "EV Charger failed to stop"
               message: >-
                 Charger did not confirm stop after 3 attempts (~30 s) and is

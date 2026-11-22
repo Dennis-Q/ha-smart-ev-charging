@@ -134,6 +134,7 @@ automations and dashboard cards work without changes.
 | Entity | Attribute | Notes |
 |---|---|---|
 | `binary_sensor.peblar_ev_charger_active_warnings` | `active_warning_codes` (list) | ON when any warning slot > 0 |
+| `binary_sensor.peblar_ev_charger_unreachable` | – | ON when the charger has not answered over Modbus for 90 s (an HA restart does not trip it) |
 | `binary_sensor.peblar_ev_charger_active_errors` | `active_error_codes` (list) | ON when any error slot > 0 |
 
 The `active_warning_codes` / `active_error_codes` attributes contain the raw
