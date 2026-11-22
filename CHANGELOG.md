@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-## [0.2.19] – unreleased
+## [0.2.19] – 2026-11-22
 
 ### Added
 - **Compensated charging per car:** `input_boolean.ev_car1_compensated` (2, 3): home charging of that car
@@ -214,7 +214,7 @@ All notable changes to this project will be documented here.
 - `ev_validate_charging_limit` only compares when both limits are numbers (it used to raise a
   template error on an empty expected limit).
 
-## [0.2.18] – unreleased
+## [0.2.18] – 2026-11-22 (released together with 0.2.19)
 
 ### Added
 - **Charging plan on the dashboard** (Solar Charging view, next to Window Charging): an
