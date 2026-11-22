@@ -97,6 +97,11 @@ All notable changes to this project will be documented here.
   values stay as they are.
 
 ### Fixed
+
+- **Force charge (once) switched off right away:** when the car is already at the force charge limit, or
+  within 1 % of it, force charge switches off the moment it is switched on. The notification said "Car
+  fully charged"; it now says it was switched off at once, with the car's SoC and the limit, and that the
+  limit must be raised to charge more. The normal "complete" message also shows both values.
 - **Manual override switched off: this project decides again, also about stopping.** A charge started
   by hand kept running after the override was switched off: in solar mode with too little sun (no
   branch stopped it), and in every other mode (the mode automation did not look at the override).

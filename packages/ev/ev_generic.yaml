@@ -589,16 +589,44 @@ automation:
           {{ (states('sensor.ev_car_soc') | int(0)) >= (limit - 1)
           and is_state('input_boolean.ev_force_charge_once', 'on') }}
     actions:
+      # Read before the turn-off below: how long force charge was on. Off within 5 minutes = it
+      # never really charged: the car was already at (or within 1 % of) the force limit when it was
+      # switched on (prod 2026-11-20 17:20: 89 % vs limit 90, on and off in the same second, message
+      # "Car fully charged"). The 5 minutes are a choice (user 2026-11-22: a notification, no
+      # change to when it switches off).
+      - variables:
+          on_s: >-
+            {{ (now() - states.input_boolean.ev_force_charge_once.last_changed).total_seconds() | int }}
+          soc: "{{ states('sensor.ev_car_soc') | int(0) }}"
+          limit: "{{ states('input_number.ev_charging_limit_force') | int(1) }}"
       - action: input_boolean.turn_off
         target:
           entity_id: input_boolean.ev_force_charge_once
-      - action: script.ev_notify_dispatch
-        data:
-          title: "EV Force Charge Complete (one-time)"
-          message: "Car fully charged"
-          tag: ev_force_complete
-          color: green
-          priority: high
+      - if: "{{ on_s < 300 }}"
+        then:
+          - action: script.ev_notify_dispatch
+            data:
+              title: "EV Force Charge Switched Off At Once (one-time)"
+              message: >-
+                [ Car: {{ soc }}% - Force limit: {{ limit }}% ]
+
+                Force charge was switched off right after it was switched on: the car is already at
+                the force charge limit, or within 1 %. Raise the force charge limit and switch it on
+                again to charge more.
+              tag: ev_force_complete
+              color: orange
+              priority: high
+        else:
+          - action: script.ev_notify_dispatch
+            data:
+              title: "EV Force Charge Complete (one-time)"
+              message: >-
+                [ Car: {{ soc }}% - Force limit: {{ limit }}% ]
+
+                The car reached the force charge limit; force charge is off.
+              tag: ev_force_complete
+              color: green
+              priority: high
 
   # Auto-disable force charge (once) when the cable is unplugged.
   # Makes one-time force charging truly one-time: the session ends on
