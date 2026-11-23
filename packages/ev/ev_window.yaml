@@ -215,6 +215,35 @@ template:
           max_price: "{{ states('input_number.ev_window_charging_max_price') | float(none) }}"
           max_price_enabled: "{{ is_state('input_boolean.ev_window_max_price_enabled', 'on') }}"
 
+  - binary_sensor:
+      # No prices: the current slot has no price (the source gave none for a while and the kept slots
+      # have run out) and the latest start time (sensor.ev_window_latest_start_time = window end minus
+      # the hours needed) has come. The car then charges as window charging until it reaches the
+      # window limit or the window ends, whatever tariff optimisation and the max price limit say
+      # (user 2026-11-23: without it no slot could be picked and the limit failed closed, so the car
+      # did not charge at all until prices returned). Once on it stays on while the slot has no
+      # price and the car needs hours: the latest start time moves later while it charges.
+      - name: "EV Window No Price Fallback"
+        unique_id: ev_window_no_price_fallback
+        icon: mdi:cash-remove
+        state: >-
+          {%- set slots = state_attr('sensor.ev_energy_prices_data', 'slots') or [] -%}
+          {%- set step = 3600 // (state_attr('sensor.ev_energy_prices_data', 'slots_per_hour') | int(1)) -%}
+          {%- set now_ts = as_timestamp(now()) -%}
+          {%- set priced = slots | selectattr('ts', '<=', now_ts) | selectattr('ts', '>', now_ts - step)
+              | list | length > 0 -%}
+          {%- set base = is_state('sensor.ev_charging_window_active', 'true')
+              and is_state('input_boolean.ev_window_charging', 'on')
+              and state_attr('sensor.ev_active_car', 'guest') not in [true, 'true', 'True']
+              and not priced
+              and states('sensor.ev_hours_needed_for_charging') | float(0) > 0 -%}
+          {%- set ls = states('sensor.ev_window_latest_start_time') -%}
+          {%- set due = ls not in ['unknown', 'unavailable', 'None', '']
+              and now().strftime('%Y-%m-%d %H:%M:%S') >= ls -%}
+          {{ base and (due or this.state == 'on') }}
+        attributes:
+          latest_start: "{{ states('sensor.ev_window_latest_start_time') }}"
+
   # 3) Cheapest slots within window. Trigger-based so the selection is computed
   # once (in variables) and shared by state and attributes. The state is the
   # number of selected slots — a JSON list as the state ran into HA's

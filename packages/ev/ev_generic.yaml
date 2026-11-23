@@ -412,6 +412,10 @@ template:
             assisted_battery
           {% elif following and assisted_mode == 'force' and below_limit %}
             assisted_force
+          {# No price for this slot and the latest start time has come: charge as window charging so
+             the car still reaches its window limit (binary_sensor.ev_window_no_price_fallback) #}
+          {% elif is_state('binary_sensor.ev_window_no_price_fallback', 'on') and not following %}
+            window
           {# Prefer tariff over solar: with optimisation the cheapest slots win, without it the
              whole window (with the max price limit: every slot cheap enough) wins #}
           {% elif solar_enabled and prefer_tariff_over_solar and is_window_active and tarif_optimization

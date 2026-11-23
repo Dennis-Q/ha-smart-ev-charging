@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here.
 
+## [0.2.20] - unreleased
+
+### Changed
+- **No prices no longer means no charging.** When the price source gives no prices and the kept slots
+  have run out, window charging with tariff optimisation picked no hours, and the max price limit
+  never charged at an unknown price: the car did not charge until prices returned. Now it charges from
+  the latest start time (window end minus the hours it needs) until the window limit or the window end,
+  also with the max price limit on. New `binary_sensor.ev_window_no_price_fallback` (on while it does);
+  the "Price data unavailable" notification says so. Known prices work as before.
+
 ## [0.2.19] – 2026-11-22
 
 ### Added

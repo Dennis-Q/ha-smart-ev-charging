@@ -460,8 +460,8 @@ automation:
       Notifies when the price sensor (input_text.ev_price_entity) has given no
       prices for an hour while tariff optimisation or the window max price
       limit is in use. Charging keeps using the already-published slots until
-      they end; after that cheapest-hours charging stops. Clears when prices
-      return.
+      they end; after that the car charges from the latest start time
+      (binary_sensor.ev_window_no_price_fallback). Clears when prices return.
     mode: single
     triggers:
       - trigger: template
@@ -495,8 +495,9 @@ automation:
                   title: "EV: Price data unavailable"
                   message: >-
                     {{ source }} has given no prices for an hour. Known prices
-                    until: {{ known_until }}. After that, cheapest-hours charging
-                    stops until prices return.
+                    until: {{ known_until }}. After that the car charges from the
+                    latest start time (window end minus the hours it needs), so it
+                    still reaches its window limit.
                   tag: ev_price_data_stale
                   color: orange
                   priority: high
@@ -507,8 +508,9 @@ automation:
                   message: >-
                     `{{ source }}` has given no prices for an hour.
                     Charging keeps using the already-published slots, known
-                    until **{{ known_until }}**. After that, cheapest-hours
-                    charging stops until prices return.
+                    until **{{ known_until }}**. After that the car charges from the
+                    latest start time (window end minus the hours it needs), also
+                    with the max price limit on, so it still reaches its window limit.
 
                     Check the price integration, or **EV Charging → Advanced
                     settings → Price data**.

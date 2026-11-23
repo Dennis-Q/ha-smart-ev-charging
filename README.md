@@ -99,7 +99,9 @@ and turns it into a sorted list of slots (`slots: [{ts, price}]`, `slots_per_hou
   the same for all-in and market prices.
 - **Outages:** when the source has no prices, the slots that have not ended yet are kept
   (`stale: true`). Slots are fixed timestamps and are never reused for another day. After an
-  hour you get a notification.
+  hour you get a notification. When the kept slots have run out too, window charging still charges:
+  from the latest start time (window end minus the hours needed) until the window limit, also with
+  tariff optimisation or the max price limit on (`binary_sensor.ev_window_no_price_fallback`).
 - **Cheapest hours** (window charging + `ev_dynamic_tariff_optimization`): picks the cheapest
   ⌈hours needed × slots per hour⌉ slots between now and the window end. The plan is shown as a
   chart and summary under **Window Charging** on the main view.
